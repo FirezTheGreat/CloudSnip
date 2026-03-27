@@ -1,4 +1,3 @@
-import React from "react";
 import {
   LineChart,
   Line,
@@ -6,7 +5,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from "recharts";
 import type { CostTrend } from "../types";
@@ -17,6 +15,14 @@ const COLORS: Record<string, string> = {
   gcs: "#10b981",
   disk: "#f59e0b",
   cloud_sql: "#ef4444",
+};
+
+const LABELS: Record<string, string> = {
+  compute: "Compute",
+  cloud_function: "Functions",
+  gcs: "Storage",
+  disk: "Disks",
+  cloud_sql: "Cloud SQL",
 };
 
 interface Props {
@@ -40,53 +46,60 @@ export function CostTrendChart({ data }: Props) {
 
   if (chartData.length === 0) {
     return (
-      <div style={styles.empty}>
-        <p style={styles.emptyText}>No cost data yet</p>
-        <p style={styles.emptySubtext}>Data will appear after the first collection cycle</p>
+      <div className="flex flex-col items-center justify-center h-[300px] text-slate-500">
+        <svg className="w-10 h-10 mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+        </svg>
+        <p className="text-sm font-medium">No cost data yet</p>
+        <p className="text-xs mt-1 opacity-60">Data will appear after the first collection cycle</p>
       </div>
     );
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-        <XAxis dataKey="hour" stroke="#9ca3af" fontSize={12} />
-        <YAxis stroke="#9ca3af" fontSize={12} />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: "#1f2937",
-            border: "1px solid #374151",
-            borderRadius: "8px",
-            color: "#f3f4f6",
-          }}
-        />
-        <Legend />
+    <div>
+      <div className="flex items-center gap-4 mb-3">
         {resourceTypes.map((type) => (
-          <Line
-            key={type}
-            type="monotone"
-            dataKey={type}
-            stroke={COLORS[type] || "#6b7280"}
-            strokeWidth={2}
-            dot={{ r: 3 }}
-            name={type.toUpperCase()}
-          />
+          <div key={type} className="flex items-center gap-1.5">
+            <span
+              className="w-2.5 h-2.5 rounded-full"
+              style={{ backgroundColor: COLORS[type] || "#6b7280" }}
+            />
+            <span className="text-xs text-slate-400 font-medium">
+              {LABELS[type] || type}
+            </span>
+          </div>
         ))}
-      </LineChart>
-    </ResponsiveContainer>
+      </div>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="hour" stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
+          <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "#1a2332",
+              border: "1px solid #1e293b",
+              borderRadius: "10px",
+              color: "#e2e8f0",
+              fontSize: 12,
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            }}
+          />
+          {resourceTypes.map((type) => (
+            <Line
+              key={type}
+              type="monotone"
+              dataKey={type}
+              stroke={COLORS[type] || "#6b7280"}
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4, strokeWidth: 0 }}
+              name={LABELS[type] || type}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
-
-const styles = {
-  empty: {
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    justifyContent: "center",
-    height: 300,
-    color: "#9ca3af",
-  },
-  emptyText: { fontSize: 18, margin: 0 },
-  emptySubtext: { fontSize: 14, marginTop: 8, opacity: 0.7 },
-};

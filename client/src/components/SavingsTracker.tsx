@@ -1,4 +1,3 @@
-import React from "react";
 import {
   BarChart,
   Bar,
@@ -6,7 +5,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   Cell,
 } from "recharts";
@@ -21,8 +19,10 @@ const ACTION_LABELS: Record<string, string> = {
   stop_instance: "Stop VM",
   cap_instances: "Cap Function",
   delete_disk: "Del Disk",
-  label_resource: "Label Resource",
+  label_resource: "Label",
 };
+
+const BAR_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6"];
 
 export function SavingsTracker({ savings, actions }: Props) {
   const totalMonthly = savings?.summary.total_monthly || 0;
@@ -39,124 +39,77 @@ export function SavingsTracker({ savings, actions }: Props) {
   const recentActions = actions.filter((a) => a.status === "success").slice(0, 5);
 
   return (
-    <div style={styles.container}>
-      <div style={styles.statsRow}>
-        <div style={styles.statCard}>
-          <span style={styles.statValue}>${totalMonthly.toFixed(2)}</span>
-          <span style={styles.statLabel}>Monthly Savings</span>
+    <div className="flex flex-col gap-5">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="p-4 rounded-lg bg-emerald-950/30 border border-emerald-900/30 text-center">
+          <p className="text-2xl font-bold text-success">${totalMonthly.toFixed(2)}</p>
+          <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Monthly Savings</p>
         </div>
-        <div style={styles.statCard}>
-          <span style={styles.statValue}>${totalHourly.toFixed(4)}</span>
-          <span style={styles.statLabel}>Hourly Savings</span>
+        <div className="p-4 rounded-lg bg-blue-950/30 border border-blue-900/30 text-center">
+          <p className="text-2xl font-bold text-accent">${totalHourly.toFixed(4)}</p>
+          <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Hourly Savings</p>
         </div>
-        <div style={styles.statCard}>
-          <span style={styles.statValue}>{successCount}</span>
-          <span style={styles.statLabel}>Actions Taken</span>
+        <div className="p-4 rounded-lg bg-violet-950/30 border border-violet-900/30 text-center">
+          <p className="text-2xl font-bold text-info">{successCount}</p>
+          <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Actions Taken</p>
         </div>
       </div>
 
+      {/* Chart */}
       {chartData.length > 0 ? (
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={180}>
           <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} />
-            <YAxis
-              stroke="#9ca3af"
-              fontSize={12}
-              tickFormatter={(v) => `$${v}`}
-            />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis dataKey="name" stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#1f2937",
-                border: "1px solid #374151",
-                borderRadius: 8,
-                color: "#f3f4f6",
+                backgroundColor: "#1a2332",
+                border: "1px solid #1e293b",
+                borderRadius: "10px",
+                color: "#e2e8f0",
+                fontSize: 12,
+                boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
               }}
               formatter={(value: number) => [`$${value.toFixed(2)}`, "Monthly Savings"]}
             />
-            <Bar dataKey="savings" radius={[4, 4, 0, 0]}>
+            <Bar dataKey="savings" radius={[6, 6, 0, 0]}>
               {chartData.map((_, i) => (
-                <Cell
-                  key={i}
-                  fill={["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6"][i % 4]}
-                />
+                <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
       ) : (
-        <div style={styles.empty}>
-          <p>No savings recorded yet</p>
+        <div className="flex items-center justify-center py-10 text-slate-500 text-sm">
+          No savings recorded yet
         </div>
       )}
 
+      {/* Recent actions */}
       {recentActions.length > 0 && (
-        <div style={styles.actionList}>
-          <h4 style={styles.actionListTitle}>Recent Actions</h4>
-          {recentActions.map((a) => (
-            <div key={a.id} style={styles.actionItem}>
-              <span style={styles.actionType}>
-                {ACTION_LABELS[a.action_type] || a.action_type}
-              </span>
-              <span style={styles.actionResource}>{a.resource_id}</span>
-              <span style={styles.actionSavings}>
-                ${a.cost_before_hourly?.toFixed(4)}/hr →
-                ${a.cost_after_hourly?.toFixed(4)}/hr
-              </span>
-            </div>
-          ))}
+        <div>
+          <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Recent Optimizations
+          </h4>
+          <div className="flex flex-col divide-y divide-border">
+            {recentActions.map((a) => (
+              <div key={a.id} className="flex items-center gap-3 py-2 text-xs">
+                <span className="font-semibold text-slate-300 w-20 shrink-0">
+                  {ACTION_LABELS[a.action_type] || a.action_type}
+                </span>
+                <span className="font-mono text-slate-500 truncate flex-1">
+                  {a.resource_id}
+                </span>
+                <span className="text-success font-semibold whitespace-nowrap">
+                  ${a.cost_before_hourly?.toFixed(4)} → ${a.cost_after_hourly?.toFixed(4)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: { display: "flex", flexDirection: "column", gap: 16 },
-  statsRow: { display: "flex", gap: 12 },
-  statCard: {
-    flex: 1,
-    padding: "16px",
-    backgroundColor: "#1f2937",
-    borderRadius: 8,
-    border: "1px solid #374151",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 700,
-    color: "#10b981",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginTop: 4,
-  },
-  empty: {
-    textAlign: "center",
-    padding: 40,
-    color: "#9ca3af",
-    fontSize: 14,
-  },
-  actionList: { marginTop: 8 },
-  actionListTitle: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#d1d5db",
-    margin: "0 0 8px",
-  },
-  actionItem: {
-    display: "flex",
-    gap: 12,
-    padding: "6px 0",
-    borderBottom: "1px solid #374151",
-    fontSize: 12,
-    color: "#9ca3af",
-    alignItems: "center",
-  },
-  actionType: { fontWeight: 600, color: "#d1d5db", minWidth: 90 },
-  actionResource: { fontFamily: "monospace", flex: 1 },
-  actionSavings: { color: "#10b981" },
-};

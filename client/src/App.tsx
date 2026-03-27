@@ -1,4 +1,3 @@
-import React from "react";
 import { useCostData } from "./hooks/useCostData";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { CostTrendChart } from "./components/CostTrendChart";
@@ -21,78 +20,135 @@ export default function App() {
   const { connected, messages } = useWebSocket();
 
   return (
-    <div style={styles.app}>
-      <header style={styles.header}>
-        <div>
-          <h1 style={styles.title}>Cloud Cost Intelligence</h1>
-          <p style={styles.subtitle}>
-            Real-time monitoring, anomaly detection & auto-optimization
-          </p>
-        </div>
-        <div style={styles.headerRight}>
-          <span
-            style={{
-              ...styles.statusDot,
-              backgroundColor: connected ? "#10b981" : "#ef4444",
-            }}
-          />
-          <span style={styles.statusText}>
-            {connected ? "Live" : "Disconnected"}
-          </span>
-          <button style={styles.scanButton} onClick={triggerScan}>
-            Trigger Scan
-          </button>
-        </div>
-      </header>
+    <div className="min-h-screen bg-surface text-slate-200">
+      {/* Sidebar accent line */}
+      <div className="fixed left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-accent via-info to-success" />
 
-      {summary && (
-        <div style={styles.statsBar}>
-          <StatCard label="Resources" value={summary.active_resources} />
-          <StatCard
-            label="Open Anomalies"
-            value={summary.open_anomalies}
-            color={summary.open_anomalies > 0 ? "#ef4444" : undefined}
-          />
-          <StatCard
-            label="Current Cost"
-            value={`$${Number(summary.current_hourly_cost).toFixed(4)}/hr`}
-          />
-          <StatCard
-            label="Monthly Savings"
-            value={`$${Number(summary.total_monthly_savings).toFixed(2)}`}
-            color="#10b981"
-          />
-          <StatCard label="Actions Taken" value={summary.actions_taken} />
+      <div className="pl-6 pr-6 py-6 max-w-[1600px] mx-auto">
+        {/* Header */}
+        <header className="flex items-center justify-between mb-8">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-success flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-extrabold tracking-tight text-white">
+                CloudSnip
+              </h1>
+            </div>
+            <p className="text-sm text-slate-500 ml-11">
+              Real-time cost intelligence &middot; Anomaly detection &middot; Auto-optimization
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-raised border border-border">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  connected ? "bg-success animate-pulse-live" : "bg-danger"
+                }`}
+              />
+              <span className="text-xs font-medium text-slate-400">
+                {connected ? "Live" : "Offline"}
+              </span>
+            </div>
+            <button
+              onClick={triggerScan}
+              className="px-4 py-2 text-sm font-semibold text-white bg-accent hover:bg-accent-muted rounded-lg transition-colors cursor-pointer"
+            >
+              Trigger Scan
+            </button>
+          </div>
+        </header>
+
+        {/* Stat Cards */}
+        {summary && (
+          <div className="grid grid-cols-5 gap-3 mb-6">
+            <StatCard
+              label="Resources"
+              value={summary.active_resources}
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+                </svg>
+              }
+            />
+            <StatCard
+              label="Open Anomalies"
+              value={summary.open_anomalies}
+              variant={summary.open_anomalies > 0 ? "danger" : "default"}
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              }
+            />
+            <StatCard
+              label="Current Cost"
+              value={`$${Number(summary.current_hourly_cost).toFixed(4)}/hr`}
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                </svg>
+              }
+            />
+            <StatCard
+              label="Monthly Savings"
+              value={`$${Number(summary.total_monthly_savings).toFixed(2)}`}
+              variant="success"
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              }
+            />
+            <StatCard
+              label="Actions Taken"
+              value={summary.actions_taken}
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              }
+            />
+          </div>
+        )}
+
+        {/* Main Grid */}
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <Panel title="Cost Trends" subtitle="Last 24 hours" className="col-span-2">
+            <CostTrendChart data={costTrend} />
+          </Panel>
+
+          <Panel title="Anomaly Feed" subtitle="Live detections">
+            <AnomalyFeed anomalies={anomalies} wsMessages={messages} />
+          </Panel>
         </div>
-      )}
 
-      <div style={styles.grid}>
-        <Panel title="Cost Trends (24h)" span={2}>
-          <CostTrendChart data={costTrend} />
-        </Panel>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <Panel title="Savings Tracker" subtitle="Optimization impact" className="col-span-2">
+            <SavingsTracker savings={savings} actions={actions} />
+          </Panel>
 
-        <Panel title="Anomaly Feed">
-          <AnomalyFeed anomalies={anomalies} wsMessages={messages} />
+          <Panel title="Action Log" subtitle="Audit trail">
+            <ActionLog actions={actions} />
+          </Panel>
+        </div>
+
+        <Panel title="Resource Inventory" subtitle="All monitored GCP resources">
+          <ResourceTable resources={resources} />
         </Panel>
       </div>
 
-      <div style={styles.grid}>
-        <Panel title="Savings Tracker" span={2}>
-          <SavingsTracker savings={savings} actions={actions} />
-        </Panel>
-
-        <Panel title="Action Log">
-          <ActionLog actions={actions} />
-        </Panel>
-      </div>
-
-      <Panel title="Resource Inventory">
-        <ResourceTable resources={resources} />
-      </Panel>
-
+      {/* Loading Overlay */}
       {loading && (
-        <div style={styles.loadingOverlay}>
-          <p style={styles.loadingText}>Loading dashboard...</p>
+        <div className="fixed inset-0 bg-surface/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-slate-400 font-medium">Loading dashboard...</p>
+          </div>
         </div>
       )}
     </div>
@@ -102,148 +158,69 @@ export default function App() {
 function StatCard({
   label,
   value,
-  color,
+  variant = "default",
+  icon,
 }: {
   label: string;
   value: string | number;
-  color?: string;
+  variant?: "default" | "success" | "danger";
+  icon?: React.ReactNode;
 }) {
+  const valueColors = {
+    default: "text-white",
+    success: "text-success",
+    danger: "text-danger",
+  };
+
+  const iconBgColors = {
+    default: "bg-slate-800",
+    success: "bg-emerald-950",
+    danger: "bg-red-950",
+  };
+
+  const iconTextColors = {
+    default: "text-slate-400",
+    success: "text-success",
+    danger: "text-danger",
+  };
+
   return (
-    <div style={styles.statCard}>
-      <span style={{ ...styles.statValue, color: color || "#f3f4f6" }}>
-        {value}
-      </span>
-      <span style={styles.statLabel}>{label}</span>
+    <div className="flex items-center gap-3 p-4 bg-surface-raised rounded-xl border border-border hover:border-border-subtle transition-colors">
+      <div className={`w-9 h-9 rounded-lg ${iconBgColors[variant]} ${iconTextColors[variant]} flex items-center justify-center shrink-0`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className={`text-lg font-bold ${valueColors[variant]} truncate`}>
+          {value}
+        </p>
+        <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
+          {label}
+        </p>
+      </div>
     </div>
   );
 }
 
 function Panel({
   title,
+  subtitle,
   children,
-  span,
+  className = "",
 }: {
   title: string;
+  subtitle?: string;
   children: React.ReactNode;
-  span?: number;
+  className?: string;
 }) {
   return (
-    <div style={{ ...styles.panel, gridColumn: span ? `span ${span}` : undefined }}>
-      <h3 style={styles.panelTitle}>{title}</h3>
+    <div className={`bg-surface-raised rounded-xl border border-border p-5 ${className}`}>
+      <div className="flex items-baseline gap-2 mb-4">
+        <h3 className="text-sm font-semibold text-slate-200">{title}</h3>
+        {subtitle && (
+          <span className="text-xs text-slate-500">{subtitle}</span>
+        )}
+      </div>
       {children}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  app: {
-    minHeight: "100vh",
-    backgroundColor: "#111827",
-    color: "#f3f4f6",
-    fontFamily: "'Inter', -apple-system, sans-serif",
-    padding: "24px 32px",
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
-    paddingBottom: 16,
-    borderBottom: "1px solid #1f2937",
-  },
-  title: {
-    margin: 0,
-    fontSize: 28,
-    fontWeight: 700,
-    background: "linear-gradient(135deg, #3b82f6, #10b981)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-  },
-  subtitle: {
-    margin: "4px 0 0",
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  headerRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    display: "inline-block",
-  },
-  statusText: { fontSize: 13, color: "#9ca3af" },
-  scanButton: {
-    padding: "8px 16px",
-    backgroundColor: "#3b82f6",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  statsBar: {
-    display: "flex",
-    gap: 12,
-    marginBottom: 24,
-  },
-  statCard: {
-    flex: 1,
-    padding: "16px 20px",
-    backgroundColor: "#1f2937",
-    borderRadius: 8,
-    border: "1px solid #374151",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: 700,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: "#6b7280",
-    marginTop: 4,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "2fr 1fr",
-    gap: 16,
-    marginBottom: 16,
-  },
-  panel: {
-    padding: "20px",
-    backgroundColor: "#111827",
-    borderRadius: 10,
-    border: "1px solid #1f2937",
-  },
-  panelTitle: {
-    margin: "0 0 16px",
-    fontSize: 16,
-    fontWeight: 600,
-    color: "#d1d5db",
-  },
-  loadingOverlay: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(17,24,39,0.8)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-  },
-  loadingText: {
-    fontSize: 18,
-    color: "#9ca3af",
-  },
-};

@@ -1,19 +1,18 @@
-import React from "react";
 import type { Anomaly, WebSocketMessage } from "../types";
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#6b7280",
+const SEVERITY_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
+  critical: { color: "text-red-400", bg: "bg-red-950/60", border: "border-red-900/50" },
+  high: { color: "text-orange-400", bg: "bg-orange-950/60", border: "border-orange-900/50" },
+  medium: { color: "text-amber-400", bg: "bg-amber-950/60", border: "border-amber-900/50" },
+  low: { color: "text-slate-400", bg: "bg-slate-800/60", border: "border-slate-700/50" },
 };
 
 const ANOMALY_ICONS: Record<string, string> = {
-  idle_instance: "IDLE",
-  runaway_function: "SPIKE",
-  cost_spike: "COST",
-  unused_disk: "DISK",
-  usage_anomaly: "WARN",
+  idle_instance: "ZZZ",
+  runaway_function: "FN!",
+  cost_spike: "$$$",
+  unused_disk: "HDD",
+  usage_anomaly: "(!)",
 };
 
 interface Props {
@@ -24,18 +23,18 @@ interface Props {
 export function AnomalyFeed({ anomalies, wsMessages }: Props) {
   const recentWsAnomalies = wsMessages
     .filter((m) => m.type === "anomalies_detected")
-    .slice(0, 5);
+    .slice(0, 3);
 
   return (
-    <div style={styles.container}>
+    <div className="flex flex-col gap-2">
       {recentWsAnomalies.length > 0 && (
-        <div style={styles.liveSection}>
-          <div style={styles.liveIndicator}>
-            <span style={styles.liveDot} />
-            LIVE
+        <div className="mb-1">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse-live" />
+            <span className="text-[10px] font-bold text-danger tracking-widest uppercase">Live</span>
           </div>
           {recentWsAnomalies.map((msg, i) => (
-            <div key={`ws-${i}`} style={styles.liveCard}>
+            <div key={`ws-${i}`} className="px-3 py-2 rounded-lg bg-red-950/30 border border-red-900/30 text-red-300 text-xs font-medium animate-fade-in-up">
               {msg.data.count} new anomalies detected
             </div>
           ))}
@@ -43,153 +42,63 @@ export function AnomalyFeed({ anomalies, wsMessages }: Props) {
       )}
 
       {anomalies.length === 0 ? (
-        <div style={styles.empty}>
-          <p style={styles.emptyText}>No anomalies detected</p>
-          <p style={styles.emptySubtext}>System is monitoring your resources</p>
+        <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+          <svg className="w-8 h-8 mb-2 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <p className="text-sm font-medium">No anomalies detected</p>
+          <p className="text-xs mt-0.5 opacity-60">System is monitoring your resources</p>
         </div>
       ) : (
-        <div style={styles.list}>
-          {anomalies.map((a) => (
-            <div key={a.id} style={styles.card}>
-              <div style={styles.cardHeader}>
-                <span
-                  style={{
-                    ...styles.severityBadge,
-                    backgroundColor: SEVERITY_COLORS[a.severity] || "#6b7280",
-                  }}
-                >
-                  {a.severity.toUpperCase()}
-                </span>
-                <span style={styles.typeBadge}>
-                  {ANOMALY_ICONS[a.anomaly_type] || "?"}{" "}
-                  {a.anomaly_type.replace(/_/g, " ")}
-                </span>
-                <span style={styles.score}>
-                  {(a.anomaly_score * 100).toFixed(0)}%
-                </span>
-              </div>
-
-              <p style={styles.description}>{a.description}</p>
-
-              <div style={styles.cardFooter}>
-                <span style={styles.resourceId}>{a.resource_id}</span>
-                <span style={styles.time}>
-                  {new Date(a.detected_at).toLocaleTimeString()}
-                </span>
-              </div>
-
-              {a.action_type && (
-                <div
-                  style={{
-                    ...styles.actionTag,
-                    borderColor:
-                      a.action_status === "success" ? "#10b981" : "#ef4444",
-                  }}
-                >
-                  {a.action_status === "success" ? "FIXED" : "FAILED"}:{" "}
-                  {a.action_type.replace(/_/g, " ")}
-                  {a.savings_monthly_projected
-                    ? ` — $${a.savings_monthly_projected.toFixed(2)}/mo saved`
-                    : ""}
+        <div className="flex flex-col gap-2 max-h-[380px] overflow-y-auto pr-1">
+          {anomalies.map((a) => {
+            const sev = SEVERITY_CONFIG[a.severity] || SEVERITY_CONFIG.low;
+            return (
+              <div key={a.id} className={`p-3 rounded-lg ${sev.bg} border ${sev.border} animate-fade-in-up`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`text-[10px] font-bold uppercase tracking-wide ${sev.color}`}>
+                    {a.severity}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    {ANOMALY_ICONS[a.anomaly_type] || "?"}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    {a.anomaly_type.replace(/_/g, " ")}
+                  </span>
+                  <span className="ml-auto text-[11px] font-semibold text-slate-500">
+                    {(a.anomaly_score * 100).toFixed(0)}%
+                  </span>
                 </div>
-              )}
-            </div>
-          ))}
+
+                <p className="text-xs text-slate-300 leading-relaxed mb-2">
+                  {a.description}
+                </p>
+
+                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                  <span className="font-mono">{a.resource_id}</span>
+                  <span>{new Date(a.detected_at).toLocaleTimeString()}</span>
+                </div>
+
+                {a.action_type && (
+                  <div className={`mt-2 px-2 py-1 rounded text-[10px] font-bold inline-flex items-center gap-1 ${
+                    a.action_status === "success"
+                      ? "bg-emerald-950/50 text-success border border-emerald-800/40"
+                      : "bg-red-950/50 text-danger border border-red-800/40"
+                  }`}>
+                    <span>{a.action_status === "success" ? "RESOLVED" : "FAILED"}</span>
+                    <span className="font-normal text-slate-400">
+                      {a.action_type.replace(/_/g, " ")}
+                      {a.savings_monthly_projected
+                        ? ` · $${a.savings_monthly_projected.toFixed(2)}/mo`
+                        : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: { display: "flex", flexDirection: "column", gap: 8 },
-  liveSection: { marginBottom: 8 },
-  liveIndicator: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    color: "#ef4444",
-    fontWeight: 700,
-    fontSize: 12,
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    backgroundColor: "#ef4444",
-    display: "inline-block",
-    animation: "pulse 1.5s infinite",
-  },
-  liveCard: {
-    padding: "8px 12px",
-    backgroundColor: "rgba(239,68,68,0.15)",
-    border: "1px solid rgba(239,68,68,0.3)",
-    borderRadius: 6,
-    color: "#fca5a5",
-    fontSize: 13,
-  },
-  empty: {
-    textAlign: "center",
-    padding: 40,
-    color: "#9ca3af",
-  },
-  emptyText: { fontSize: 16, margin: 0 },
-  emptySubtext: { fontSize: 13, marginTop: 8, opacity: 0.7 },
-  list: { display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" },
-  card: {
-    padding: "12px 14px",
-    backgroundColor: "#1f2937",
-    borderRadius: 8,
-    border: "1px solid #374151",
-  },
-  cardHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6,
-  },
-  severityBadge: {
-    padding: "2px 8px",
-    borderRadius: 4,
-    color: "#fff",
-    fontWeight: 700,
-    fontSize: 10,
-    letterSpacing: 0.5,
-  },
-  typeBadge: {
-    fontSize: 12,
-    color: "#d1d5db",
-    fontWeight: 500,
-  },
-  score: {
-    marginLeft: "auto",
-    fontSize: 13,
-    color: "#9ca3af",
-    fontWeight: 600,
-  },
-  description: {
-    margin: "4px 0 8px",
-    fontSize: 13,
-    color: "#e5e7eb",
-    lineHeight: 1.4,
-  },
-  cardFooter: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: 11,
-    color: "#6b7280",
-  },
-  resourceId: { fontFamily: "monospace" },
-  time: {},
-  actionTag: {
-    marginTop: 8,
-    padding: "4px 8px",
-    borderRadius: 4,
-    border: "1px solid",
-    fontSize: 11,
-    fontWeight: 600,
-    color: "#d1d5db",
-  },
-};

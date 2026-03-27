@@ -1,23 +1,22 @@
-import React from "react";
 import type { Resource } from "../types";
 
-const STATUS_COLORS: Record<string, string> = {
-  RUNNING: "#10b981",
-  active: "#10b981",
-  STOPPED: "#ef4444",
-  STOPPING: "#f59e0b",
-  TERMINATED: "#6b7280",
-  attached: "#3b82f6",
-  unattached: "#f97316",
-  READY: "#eab308",
+const STATUS_CONFIG: Record<string, { dot: string; text: string }> = {
+  RUNNING: { dot: "bg-success", text: "text-success" },
+  active: { dot: "bg-success", text: "text-success" },
+  STOPPED: { dot: "bg-danger", text: "text-danger" },
+  STOPPING: { dot: "bg-warning", text: "text-warning" },
+  TERMINATED: { dot: "bg-slate-600", text: "text-slate-500" },
+  attached: { dot: "bg-accent", text: "text-accent" },
+  unattached: { dot: "bg-orange-500", text: "text-orange-400" },
+  READY: { dot: "bg-warning", text: "text-warning" },
 };
 
-const TYPE_ICONS: Record<string, string> = {
-  compute: "VM",
-  cloud_function: "FN",
-  gcs: "BUCKET",
-  disk: "DISK",
-  cloud_sql: "DB",
+const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  compute: { label: "VM", color: "bg-blue-900/50 text-blue-400 border-blue-800/50" },
+  cloud_function: { label: "FN", color: "bg-violet-900/50 text-violet-400 border-violet-800/50" },
+  gcs: { label: "GCS", color: "bg-emerald-900/50 text-emerald-400 border-emerald-800/50" },
+  disk: { label: "DISK", color: "bg-amber-900/50 text-amber-400 border-amber-800/50" },
+  cloud_sql: { label: "SQL", color: "bg-red-900/50 text-red-400 border-red-800/50" },
 };
 
 interface Props {
@@ -27,97 +26,65 @@ interface Props {
 export function ResourceTable({ resources }: Props) {
   if (resources.length === 0) {
     return (
-      <div style={styles.empty}>
-        <p>No resources discovered yet</p>
+      <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+        <svg className="w-8 h-8 mb-2 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+        </svg>
+        <p className="text-sm font-medium">No resources discovered yet</p>
       </div>
     );
   }
 
   return (
-    <div style={styles.tableContainer}>
-      <table style={styles.table}>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
         <thead>
-          <tr>
-            <th style={styles.th}>Type</th>
-            <th style={styles.th}>Resource ID</th>
-            <th style={styles.th}>Name</th>
-            <th style={styles.th}>Status</th>
-            <th style={styles.th}>Cost/hr</th>
-            <th style={styles.th}>Last Seen</th>
+          <tr className="border-b border-border">
+            <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+            <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Resource ID</th>
+            <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Name</th>
+            <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+            <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Cost/hr</th>
+            <th className="text-left py-2.5 px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Last Seen</th>
           </tr>
         </thead>
-        <tbody>
-          {resources.map((r) => (
-            <tr key={r.resource_id} style={styles.tr}>
-              <td style={styles.td}>
-                <span style={styles.typeTag}>
-                  {TYPE_ICONS[r.resource_type] || r.resource_type}
-                </span>
-              </td>
-              <td style={{ ...styles.td, fontFamily: "monospace", fontSize: 12 }}>
-                {r.resource_id}
-              </td>
-              <td style={styles.td}>{r.name || "-"}</td>
-              <td style={styles.td}>
-                <span
-                  style={{
-                    ...styles.statusDot,
-                    backgroundColor: STATUS_COLORS[r.status] || "#6b7280",
-                  }}
-                />
-                {r.status}
-              </td>
-              <td style={styles.td}>
-                {r.hourly_cost > 0 ? `$${r.hourly_cost.toFixed(4)}` : "-"}
-              </td>
-              <td style={{ ...styles.td, color: "#6b7280" }}>
-                {new Date(r.last_seen).toLocaleTimeString()}
-              </td>
-            </tr>
-          ))}
+        <tbody className="divide-y divide-border-subtle">
+          {resources.map((r) => {
+            const typeConf = TYPE_CONFIG[r.resource_type] || { label: r.resource_type, color: "bg-slate-800 text-slate-400" };
+            const statusConf = STATUS_CONFIG[r.status] || { dot: "bg-slate-600", text: "text-slate-500" };
+
+            return (
+              <tr key={r.resource_id} className="hover:bg-surface-overlay/30 transition-colors">
+                <td className="py-2.5 px-3">
+                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold tracking-wide border ${typeConf.color}`}>
+                    {typeConf.label}
+                  </span>
+                </td>
+                <td className="py-2.5 px-3 font-mono text-xs text-slate-400">
+                  {r.resource_id}
+                </td>
+                <td className="py-2.5 px-3 text-slate-300 text-xs">
+                  {r.name || "—"}
+                </td>
+                <td className="py-2.5 px-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${statusConf.dot}`} />
+                    <span className={`text-xs font-medium ${statusConf.text}`}>
+                      {r.status}
+                    </span>
+                  </div>
+                </td>
+                <td className="py-2.5 px-3 text-xs font-mono text-slate-400">
+                  {r.hourly_cost > 0 ? `$${r.hourly_cost.toFixed(4)}` : "—"}
+                </td>
+                <td className="py-2.5 px-3 text-xs text-slate-500">
+                  {new Date(r.last_seen).toLocaleTimeString()}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  empty: { textAlign: "center", padding: 40, color: "#9ca3af" },
-  tableContainer: { overflowX: "auto" },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: 13,
-  },
-  th: {
-    textAlign: "left",
-    padding: "8px 12px",
-    borderBottom: "2px solid #374151",
-    color: "#9ca3af",
-    fontWeight: 600,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  tr: { borderBottom: "1px solid #1f2937" },
-  td: {
-    padding: "10px 12px",
-    color: "#e5e7eb",
-  },
-  typeTag: {
-    padding: "2px 8px",
-    backgroundColor: "#374151",
-    borderRadius: 4,
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: 0.5,
-    color: "#d1d5db",
-  },
-  statusDot: {
-    display: "inline-block",
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    marginRight: 6,
-  },
-};
