@@ -11,7 +11,7 @@ This system has **four** independently running processes that communicate via HT
 **What it does:** Orchestrates everything. Collects telemetry, calls the ML service, decides on actions, exposes REST API, pushes WebSocket events.
 
 **Why Express and not FastAPI:**
-- AWS SDK v3 is JavaScript-native — every cloud API call is a first-class citizen
+- GCP has official Node.js client libraries (`@google-cloud/*`) with full TypeScript support
 - You already know TypeScript — no learning curve
 - The cron scheduler, WebSocket server, and REST API all live in one process
 - The only Python you touch is the 50-line ML microservice
@@ -21,13 +21,13 @@ This system has **four** independently running processes that communicate via HT
 ```
 src/
 ├── index.ts              ← Express + WS server startup
-├── config.ts             ← All env vars + AWS client initialization
+├── config.ts             ← All env vars + GCP client initialization
 ├── db.ts                 ← pg Pool connection to TimescaleDB
 │
-├── collectors/           ← PULL data from AWS
-│   ├── cloudwatch.ts     ← GetMetricData: CPU, network, Lambda invocations
-│   ├── cost-explorer.ts  ← GetCostAndUsage: daily spend per service
-│   └── resource-inventory.ts  ← DescribeInstances, ListFunctions, DescribeVolumes
+├── collectors/           ← PULL data from GCP
+│   ├── cloud-monitoring.ts   ← Cloud Monitoring: CPU, network, function invocations
+│   ├── cloud-billing.ts      ← Cost estimation from resource inventory + pricing
+│   └── resource-inventory.ts ← Compute VMs, Cloud Functions, Disks, GCS Buckets
 │
 ├── scheduler.ts          ← node-cron: runs collectors every 5 min
 │
@@ -36,12 +36,11 @@ src/
 │
 ├── optimizer/
 │   ├── engine.ts         ← Decision tree: which anomaly → which action
-│   ├── actions/
-│   │   ├── stop-idle-ec2.ts      ← ec2.stopInstances()
-│   │   ├── cap-lambda.ts         ← lambda.putFunctionConcurrency()
-│   │   ├── cleanup-volumes.ts    ← ec2.deleteVolume()
-│   │   └── tag-resources.ts      ← ec2.createTags()
-│   └── audit.ts          ← Write before/after cost to actions table
+│   └── actions/
+│       ├── stop-idle-vm.ts         ← compute.instances.stop()
+│       ├── cap-cloud-function.ts   ← functions.updateFunction() (maxInstanceCount)
+│       ├── cleanup-disks.ts        ← compute.disks.delete()
+│       └── label-resources.ts      ← compute.instances.setLabels()
 │
 ├── routes/
 │   ├── costs.ts          ← GET /api/costs — time-bucketed cost data
@@ -54,22 +53,23 @@ src/
 
 ### Key design decisions:
 
-**Singleton AWS clients:** Create SDK clients once in `config.ts`, import everywhere. Don't create new clients per request.
+**Singleton GCP clients:** Create clients once in `config.ts`, import everywhere. GCP clients auto-detect credentials from `GOOGLE_APPLICATION_CREDENTIALS`.
 
 ```typescript
 // config.ts — create once, use everywhere
-import { CloudWatchClient } from "@aws-sdk/client-cloudwatch";
-import { CostExplorerClient } from "@aws-sdk/client-cost-explorer";
-import { EC2Client } from "@aws-sdk/client-ec2";
-import { LambdaClient } from "@aws-sdk/client-lambda";
+import { InstancesClient, DisksClient } from "@google-cloud/compute";
+import { MetricServiceClient } from "@google-cloud/monitoring";
+import { CloudFunctionsServiceClient } from "@google-cloud/functions";
+import { Storage } from "@google-cloud/storage";
 
-export const cloudwatch = new CloudWatchClient({ region: process.env.AWS_REGION });
-export const costExplorer = new CostExplorerClient({ region: "us-east-1" }); // always us-east-1
-export const ec2 = new EC2Client({ region: process.env.AWS_REGION });
-export const lambda = new LambdaClient({ region: process.env.AWS_REGION });
+export const computeInstances = new InstancesClient();
+export const computeDisks = new DisksClient();
+export const monitoring = new MetricServiceClient();
+export const functionsClient = new CloudFunctionsServiceClient();
+export const storage = new Storage();
 ```
 
-**Cost Explorer is always us-east-1:** This is an AWS quirk. The Cost Explorer API only works in us-east-1, regardless of where your resources are. Your other clients use your configured region.
+**GCP auth via service account JSON key:** Set `GOOGLE_APPLICATION_CREDENTIALS` env var to the path of your key file. All GCP client libraries auto-detect it — no explicit credential passing needed.
 
 **node-cron, not setInterval:** `node-cron` gives you cron syntax (`*/5 * * * *`), handles timezone issues, and is a well-known pattern judges will recognize.
 
@@ -103,11 +103,11 @@ Request body:
   "metrics": [
     {
       "timestamp": "2024-01-15T10:30:00Z",
-      "resource_id": "i-0abc123",
+      "resource_id": "1234567890123456",
       "cpu_utilization": 2.3,
       "network_in": 1024,
       "network_out": 512,
-      "estimated_hourly_cost": 0.023
+      "estimated_hourly_cost": 0.0076
     },
     ...
   ]
@@ -117,7 +117,7 @@ Response:
 {
   "anomalies": [
     {
-      "resource_id": "i-0abc123",
+      "resource_id": "1234567890123456",
       "anomaly_score": 0.89,
       "is_anomaly": true,
       "anomaly_type": "idle_instance",
@@ -149,7 +149,7 @@ SELECT
   resource_id,
   AVG(value) as avg_cpu
 FROM metrics
-WHERE metric_name = 'cpu_utilization'
+WHERE metric_name = 'cpuutilization'
   AND time > NOW() - INTERVAL '24 hours'
 GROUP BY bucket, resource_id
 ORDER BY bucket;
@@ -175,9 +175,10 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
 │   COST TRENDS                  │   ANOMALY FEED                │
 │   (Recharts LineChart)         │   (WebSocket live cards)      │
 │                                │                               │
-│   Lines: EC2, Lambda, S3, RDS  │   ● CRITICAL: i-0abc idle    │
-│   X-axis: time (hourly)       │   ● HIGH: Lambda spike        │
-│   Y-axis: cost ($)            │   ● MEDIUM: Orphan volume     │
+│   Lines: Compute, Functions,   │   ● CRITICAL: VM idle         │
+│          GCS, Disks            │   ● HIGH: Function spike      │
+│   X-axis: time (hourly)       │   ● MEDIUM: Orphan disk       │
+│   Y-axis: cost ($)            │                               │
 │                                │                               │
 ├────────────────────────────────┴───────────────────────────────┤
 │                                                                │
@@ -192,7 +193,7 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
 │   │After │ │After │ │After │                                  │
 │   │ $0.0 │ │ $0.05│ │ $0.0 │                                  │
 │   └──────┘ └──────┘ └──────┘                                  │
-│   Stop EC2  Cap Fn   Del EBS                                   │
+│   Stop VM  Cap Fn   Del Disk                                   │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -214,15 +215,16 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
 
 ```
 ┌─────────┐     ┌─────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│  AWS    │     │ Backend │     │TimescaleDB│    │ML Service│     │Dashboard │
+│  GCP   │     │ Backend │     │TimescaleDB│    │ML Service│     │Dashboard │
 │ Cloud   │     │ (Node)  │     │          │     │ (Python) │     │ (React)  │
 └────┬────┘     └────┬────┘     └─────┬────┘     └────┬─────┘     └────┬─────┘
      │               │               │               │               │
      │  cron fires   │               │               │               │
      │◄──────────────│               │               │               │
      │               │               │               │               │
-     │  CloudWatch   │               │               │               │
-     │  GetMetricData│               │               │               │
+     │  Cloud        │               │               │               │
+     │  Monitoring   │               │               │               │
+     │  listTimeSeries               │               │               │
      │──────────────►│               │               │               │
      │  CPU=2.3%     │               │               │               │
      │◄──────────────│               │               │               │
@@ -244,7 +246,8 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
      │               │ score > 0.7   │               │               │
      │               │ → take action │               │               │
      │               │               │               │               │
-     │  StopInstances│               │               │               │
+     │  instances    │               │               │               │
+     │  .stop()      │               │               │               │
      │◄──────────────│               │               │               │
      │  OK           │               │               │               │
      │──────────────►│               │               │               │
@@ -262,9 +265,9 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
 
 ## Error Handling Strategy
 
-Every AWS API call should be wrapped in try/catch. The system must keep running even if:
-- AWS rate limits you (back off and retry)
-- Cost Explorer returns empty data (new account, no billing yet)
+Every GCP API call should be wrapped in try/catch. The system must keep running even if:
+- GCP rate limits you (back off and retry)
+- Billing data is not yet available
 - ML service is down (log the error, skip anomaly detection this cycle)
 - A stop/delete action fails (log to audit trail with status = "failed")
 
@@ -274,7 +277,7 @@ Every AWS API call should be wrapped in try/catch. The system must keep running 
 
 ## Security Considerations
 
-1. **IAM least privilege:** The policy in README.md gives exactly the permissions needed, nothing more
-2. **No credentials in code:** Everything in `.env`, which is `.gitignore`d
+1. **Least privilege roles:** The service account has exactly the roles needed, nothing more
+2. **No credentials in code:** Key file path in `.env`, which is `.gitignore`d. Never commit `service-account-key.json`.
 3. **Dry-run mode:** Add a `DRY_RUN=true` env var that logs what it WOULD do without actually calling stop/delete
 4. **Action confirmation:** For the demo, you might want a "manual approval" mode where the dashboard shows a "Confirm" button instead of auto-executing

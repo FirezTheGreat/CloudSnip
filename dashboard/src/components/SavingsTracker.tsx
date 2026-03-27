@@ -18,10 +18,10 @@ interface Props {
 }
 
 const ACTION_LABELS: Record<string, string> = {
-  stop_instance: "Stop EC2",
-  cap_concurrency: "Cap Lambda",
-  delete_volume: "Del Volume",
-  tag_resource: "Tag Resource",
+  stop_instance: "Stop VM",
+  cap_instances: "Cap Function",
+  delete_disk: "Del Disk",
+  label_resource: "Label Resource",
 };
 
 export function SavingsTracker({ savings, actions }: Props) {

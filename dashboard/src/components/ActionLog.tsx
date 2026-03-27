@@ -1,6 +1,13 @@
 import React from "react";
 import type { Action } from "../types";
 
+const ACTION_LABELS: Record<string, string> = {
+  stop_instance: "Stop VM",
+  cap_instances: "Cap Function",
+  delete_disk: "Del Disk",
+  label_resource: "Label Resource",
+};
+
 const STATUS_STYLES: Record<string, React.CSSProperties> = {
   success: { color: "#10b981", fontWeight: 700 },
   failed: { color: "#ef4444", fontWeight: 700 },

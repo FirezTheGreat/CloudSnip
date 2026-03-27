@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { config } from "./config";
-import { collectEC2Metrics, collectLambdaMetrics } from "./collectors/cloudwatch";
-import { collectCostData } from "./collectors/cost-explorer";
+import { collectComputeMetrics, collectFunctionMetrics } from "./collectors/cloud-monitoring";
+import { collectCostData } from "./collectors/cloud-billing";
 import { collectResourceInventory } from "./collectors/resource-inventory";
 import { detectAnomalies } from "./anomaly/client";
 import { processAnomalies } from "./optimizer/engine";
@@ -20,28 +20,24 @@ async function runPipeline() {
   console.log("[Scheduler] ─── Pipeline started ───");
 
   try {
-    // Step 1: Collect resource inventory
     console.log("[Scheduler] Step 1/5: Collecting resource inventory...");
     const resources = await collectResourceInventory();
 
-    const ec2Instances = resources
-      .filter((r) => r.resourceType === "ec2" && r.status === "running")
+    const computeInstances = resources
+      .filter((r) => r.resourceType === "compute" && r.status === "RUNNING")
       .map((r) => r.resourceId);
 
-    const lambdaFunctions = resources
-      .filter((r) => r.resourceType === "lambda")
+    const cloudFunctions = resources
+      .filter((r) => r.resourceType === "cloud_function")
       .map((r) => r.resourceId);
 
-    // Step 2: Collect CloudWatch metrics
-    console.log("[Scheduler] Step 2/5: Collecting CloudWatch metrics...");
-    await collectEC2Metrics(ec2Instances);
-    await collectLambdaMetrics(lambdaFunctions);
+    console.log("[Scheduler] Step 2/5: Collecting Cloud Monitoring metrics...");
+    await collectComputeMetrics(computeInstances);
+    await collectFunctionMetrics(cloudFunctions);
 
-    // Step 3: Collect cost data
     console.log("[Scheduler] Step 3/5: Collecting cost data...");
     await collectCostData();
 
-    // Step 4: Run anomaly detection
     console.log("[Scheduler] Step 4/5: Running anomaly detection...");
     const anomalies = await detectAnomalies();
 
@@ -52,7 +48,6 @@ async function runPipeline() {
       });
     }
 
-    // Step 5: Process anomalies (execute optimizations)
     console.log("[Scheduler] Step 5/5: Processing anomalies...");
     await processAnomalies();
 
@@ -71,7 +66,6 @@ export function startScheduler() {
 
   cron.schedule(config.cronSchedule, runPipeline);
 
-  // Run immediately on startup
   setTimeout(runPipeline, 5000);
 }
 

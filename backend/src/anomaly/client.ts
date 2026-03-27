@@ -120,12 +120,12 @@ function buildDescription(anomaly: MLAnomaly): string {
   switch (anomaly.anomaly_type) {
     case "idle_instance":
       parts.push(
-        `Instance ${anomaly.resource_id} is idle — CPU at ${anomaly.latest_metrics.cpu_utilization?.toFixed(1)}%`
+        `VM ${anomaly.resource_id} is idle — CPU at ${anomaly.latest_metrics.cpu_utilization?.toFixed(1)}%`
       );
       break;
     case "runaway_function":
       parts.push(
-        `Lambda ${anomaly.resource_id} invocation spike — ${anomaly.latest_metrics.invocation_count} invocations`
+        `Cloud Function ${anomaly.resource_id} invocation spike — ${anomaly.latest_metrics.invocation_count} invocations`
       );
       break;
     case "cost_spike":

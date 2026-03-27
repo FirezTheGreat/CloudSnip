@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS metrics (
     metric_name     TEXT             NOT NULL,
     value           DOUBLE PRECISION NOT NULL,
     unit            TEXT,
-    region          TEXT             DEFAULT 'us-east-1'
+    region          TEXT             DEFAULT 'us-central1'
 );
 
 SELECT create_hypertable('metrics', 'time', if_not_exists => TRUE);
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS resources (
     resource_type   TEXT             NOT NULL,
     name            TEXT,
     status          TEXT,
-    region          TEXT             DEFAULT 'us-east-1',
+    region          TEXT             DEFAULT 'us-central1',
     tags            JSONB,
     hourly_cost     DOUBLE PRECISION DEFAULT 0,
     first_seen      TIMESTAMPTZ      DEFAULT NOW(),

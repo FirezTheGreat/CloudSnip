@@ -1,17 +1,19 @@
 import dotenv from "dotenv";
-import { CloudWatchClient } from "@aws-sdk/client-cloudwatch";
-import { CostExplorerClient } from "@aws-sdk/client-cost-explorer";
-import { EC2Client } from "@aws-sdk/client-ec2";
-import { LambdaClient } from "@aws-sdk/client-lambda";
-import { S3Client } from "@aws-sdk/client-s3";
+import { InstancesClient, DisksClient, ZoneOperationsClient } from "@google-cloud/compute";
+import { MetricServiceClient } from "@google-cloud/monitoring";
+import { CloudBillingClient } from "@google-cloud/billing";
+import { CloudFunctionsServiceClient } from "@google-cloud/functions";
+import { Storage } from "@google-cloud/storage";
 
 dotenv.config();
 
 export const config = {
-  aws: {
-    region: process.env.AWS_REGION || "us-east-1",
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+  gcp: {
+    projectId: process.env.GCP_PROJECT_ID || "",
+    zone: process.env.GCP_ZONE || "us-central1-a",
+    region: process.env.GCP_REGION || "us-central1",
+    keyFilePath: process.env.GOOGLE_APPLICATION_CREDENTIALS || "",
+    billingAccountId: process.env.GCP_BILLING_ACCOUNT_ID || "",
   },
   db: {
     url: process.env.DATABASE_URL || "postgresql://costintel:password@localhost:5432/costintel",
@@ -22,9 +24,9 @@ export const config = {
   thresholds: {
     idleCpuPercent: Number(process.env.IDLE_CPU_THRESHOLD) || 5,
     idleDurationMinutes: Number(process.env.IDLE_DURATION_MINUTES) || 30,
-    lambdaSpikeMultiplier: Number(process.env.LAMBDA_SPIKE_MULTIPLIER) || 10,
+    functionSpikeMultiplier: Number(process.env.FUNCTION_SPIKE_MULTIPLIER) || 10,
     anomalyScoreThreshold: Number(process.env.ANOMALY_SCORE_THRESHOLD) || 0.7,
-    maxLambdaConcurrency: Number(process.env.MAX_LAMBDA_CONCURRENCY) || 5,
+    maxFunctionInstances: Number(process.env.MAX_FUNCTION_INSTANCES) || 5,
   },
   server: {
     port: Number(process.env.PORT) || 4000,
@@ -34,21 +36,11 @@ export const config = {
   cronSchedule: process.env.CRON_SCHEDULE || "*/5 * * * *",
 };
 
-const awsConfig = {
-  region: config.aws.region,
-  ...(config.aws.accessKeyId && {
-    credentials: {
-      accessKeyId: config.aws.accessKeyId,
-      secretAccessKey: config.aws.secretAccessKey,
-    },
-  }),
-};
-
-export const cloudwatch = new CloudWatchClient(awsConfig);
-export const costExplorer = new CostExplorerClient({
-  ...awsConfig,
-  region: "us-east-1", // Cost Explorer only works in us-east-1
-});
-export const ec2 = new EC2Client(awsConfig);
-export const lambdaClient = new LambdaClient(awsConfig);
-export const s3 = new S3Client(awsConfig);
+// GCP clients authenticate via GOOGLE_APPLICATION_CREDENTIALS env var (service account JSON key)
+export const computeInstances = new InstancesClient();
+export const computeDisks = new DisksClient();
+export const computeZoneOps = new ZoneOperationsClient();
+export const monitoring = new MetricServiceClient();
+export const billing = new CloudBillingClient();
+export const functionsClient = new CloudFunctionsServiceClient();
+export const storage = new Storage();

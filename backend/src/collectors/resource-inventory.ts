@@ -1,16 +1,11 @@
-import { DescribeInstancesCommand } from "@aws-sdk/client-ec2";
-import { DescribeVolumesCommand } from "@aws-sdk/client-ec2";
-import { ListFunctionsCommand } from "@aws-sdk/client-lambda";
-import { ListBucketsCommand } from "@aws-sdk/client-s3";
-import { ec2, lambdaClient, s3 } from "../config";
+import { computeInstances, computeDisks, functionsClient, storage, config } from "../config";
 import { query } from "../db";
+import { getHourlyCost } from "./cloud-billing";
 
-const HOURLY_COSTS: Record<string, number> = {
-  "t2.micro": 0.0116,
-  "t2.small": 0.023,
-  "t2.medium": 0.0464,
-  "t3.micro": 0.0104,
-  "t3.small": 0.0208,
+const DISK_HOURLY_PER_GB: Record<string, number> = {
+  "pd-standard": 0.04 / 730,   // $0.04/GB/month
+  "pd-ssd": 0.17 / 730,        // $0.17/GB/month
+  "pd-balanced": 0.10 / 730,   // $0.10/GB/month
 };
 
 export interface ResourceInfo {
@@ -25,18 +20,18 @@ export interface ResourceInfo {
 export async function collectResourceInventory(): Promise<ResourceInfo[]> {
   const resources: ResourceInfo[] = [];
 
-  const [ec2Resources, lambdaResources, ebsResources, s3Resources] =
+  const [computeResult, functionResult, diskResult, storageResult] =
     await Promise.allSettled([
-      collectEC2Instances(),
-      collectLambdaFunctions(),
-      collectEBSVolumes(),
-      collectS3Buckets(),
+      collectComputeInstances(),
+      collectCloudFunctions(),
+      collectDisks(),
+      collectStorageBuckets(),
     ]);
 
-  if (ec2Resources.status === "fulfilled") resources.push(...ec2Resources.value);
-  if (lambdaResources.status === "fulfilled") resources.push(...lambdaResources.value);
-  if (ebsResources.status === "fulfilled") resources.push(...ebsResources.value);
-  if (s3Resources.status === "fulfilled") resources.push(...s3Resources.value);
+  if (computeResult.status === "fulfilled") resources.push(...computeResult.value);
+  if (functionResult.status === "fulfilled") resources.push(...functionResult.value);
+  if (diskResult.status === "fulfilled") resources.push(...diskResult.value);
+  if (storageResult.status === "fulfilled") resources.push(...storageResult.value);
 
   for (const r of resources) {
     await query(
@@ -48,33 +43,37 @@ export async function collectResourceInventory(): Promise<ResourceInfo[]> {
     );
   }
 
-  console.log(`[Inventory] Found ${resources.length} resources`);
+  console.log(`[Inventory] Found ${resources.length} GCP resources`);
   return resources;
 }
 
-async function collectEC2Instances(): Promise<ResourceInfo[]> {
-  const cmd = new DescribeInstancesCommand({});
-  const response = await ec2.send(cmd);
+async function collectComputeInstances(): Promise<ResourceInfo[]> {
   const results: ResourceInfo[] = [];
 
-  for (const reservation of response.Reservations || []) {
-    for (const instance of reservation.Instances || []) {
-      const id = instance.InstanceId || "";
-      const instanceType = instance.InstanceType || "unknown";
-      const state = instance.State?.Name || "unknown";
-      const nameTag = instance.Tags?.find((t) => t.Key === "Name")?.Value || "";
+  const aggListRequest = computeInstances.aggregatedListAsync({
+    project: config.gcp.projectId,
+  });
+
+  for await (const [zone, instancesObj] of aggListRequest) {
+    for (const instance of instancesObj.instances || []) {
+      const machineType = (instance.machineType || "").split("/").pop() || "unknown";
+      const status = instance.status || "UNKNOWN";
+      const id = String(instance.id || "");
+      const name = instance.name || "";
 
       results.push({
         resourceId: id,
-        resourceType: "ec2",
-        name: nameTag,
-        status: state,
-        hourlyCost: state === "running" ? (HOURLY_COSTS[instanceType] || 0.0116) : 0,
+        resourceType: "compute",
+        name,
+        status,
+        hourlyCost: status === "RUNNING" ? getHourlyCost(machineType) : 0,
         metadata: {
-          instanceType,
-          launchTime: instance.LaunchTime?.toISOString(),
-          availabilityZone: instance.Placement?.AvailabilityZone,
-          tags: instance.Tags,
+          machineType,
+          zone: (zone || "").split("/").pop(),
+          selfLink: instance.selfLink,
+          creationTimestamp: instance.creationTimestamp,
+          labels: instance.labels,
+          networkInterfaces: instance.networkInterfaces?.map((ni) => ni.networkIP),
         },
       });
     }
@@ -83,80 +82,103 @@ async function collectEC2Instances(): Promise<ResourceInfo[]> {
   return results;
 }
 
-async function collectLambdaFunctions(): Promise<ResourceInfo[]> {
-  const cmd = new ListFunctionsCommand({});
-  const response = await lambdaClient.send(cmd);
+async function collectCloudFunctions(): Promise<ResourceInfo[]> {
   const results: ResourceInfo[] = [];
+  const parent = `projects/${config.gcp.projectId}/locations/${config.gcp.region}`;
 
-  for (const fn of response.Functions || []) {
-    results.push({
-      resourceId: fn.FunctionName || "",
-      resourceType: "lambda",
-      name: fn.FunctionName || "",
-      status: "active",
-      hourlyCost: 0, // Lambda is pay-per-invocation
-      metadata: {
-        runtime: fn.Runtime,
-        memorySize: fn.MemorySize,
-        timeout: fn.Timeout,
-        lastModified: fn.LastModified,
-        codeSize: fn.CodeSize,
-      },
-    });
+  try {
+    const [functions] = await functionsClient.listFunctions({ parent });
+
+    for (const fn of functions || []) {
+      const name = (fn.name || "").split("/").pop() || "";
+      const status = fn.status ? String(fn.status) : "ACTIVE";
+
+      results.push({
+        resourceId: name,
+        resourceType: "cloud_function",
+        name,
+        status: "active",
+        hourlyCost: 0, // Cloud Functions are pay-per-invocation
+        metadata: {
+          runtime: fn.buildConfig?.runtime,
+          entryPoint: fn.buildConfig?.entryPoint,
+          availableMemory: fn.serviceConfig?.availableMemory,
+          maxInstanceCount: fn.serviceConfig?.maxInstanceCount,
+          updateTime: fn.updateTime,
+          fullName: fn.name,
+        },
+      });
+    }
+  } catch (err: any) {
+    console.error("[Inventory] Error listing Cloud Functions:", err.message);
   }
 
   return results;
 }
 
-async function collectEBSVolumes(): Promise<ResourceInfo[]> {
-  const cmd = new DescribeVolumesCommand({});
-  const response = await ec2.send(cmd);
+async function collectDisks(): Promise<ResourceInfo[]> {
   const results: ResourceInfo[] = [];
 
-  for (const vol of response.Volumes || []) {
-    const sizeGB = vol.Size || 0;
-    const attached = (vol.Attachments?.length || 0) > 0;
-    const nameTag = vol.Tags?.find((t) => t.Key === "Name")?.Value || "";
+  const aggListRequest = computeDisks.aggregatedListAsync({
+    project: config.gcp.projectId,
+  });
 
-    // gp2: $0.10/GB/month ≈ $0.000137/GB/hour
-    const hourlyCost = sizeGB * 0.10 / 730;
+  for await (const [zone, disksObj] of aggListRequest) {
+    for (const disk of disksObj.disks || []) {
+      const sizeGB = Number(disk.sizeGb || 0);
+      const diskType = (disk.type || "").split("/").pop() || "pd-standard";
+      const isAttached = (disk.users || []).length > 0;
+      const name = disk.name || "";
+      const id = String(disk.id || "");
 
-    results.push({
-      resourceId: vol.VolumeId || "",
-      resourceType: "ebs",
-      name: nameTag,
-      status: attached ? "attached" : "unattached",
-      hourlyCost,
-      metadata: {
-        size: sizeGB,
-        volumeType: vol.VolumeType,
-        state: vol.State,
-        attachments: vol.Attachments?.map((a) => a.InstanceId),
-        createTime: vol.CreateTime?.toISOString(),
-        tags: vol.Tags,
-      },
-    });
+      const hourlyCost = sizeGB * (DISK_HOURLY_PER_GB[diskType] || DISK_HOURLY_PER_GB["pd-standard"]);
+
+      results.push({
+        resourceId: id,
+        resourceType: "disk",
+        name,
+        status: isAttached ? "attached" : "unattached",
+        hourlyCost,
+        metadata: {
+          sizeGb: sizeGB,
+          diskType,
+          zone: (zone || "").split("/").pop(),
+          status: disk.status,
+          users: disk.users,
+          selfLink: disk.selfLink,
+          labels: disk.labels,
+          creationTimestamp: disk.creationTimestamp,
+        },
+      });
+    }
   }
 
   return results;
 }
 
-async function collectS3Buckets(): Promise<ResourceInfo[]> {
-  const cmd = new ListBucketsCommand({});
-  const response = await s3.send(cmd);
+async function collectStorageBuckets(): Promise<ResourceInfo[]> {
   const results: ResourceInfo[] = [];
 
-  for (const bucket of response.Buckets || []) {
-    results.push({
-      resourceId: bucket.Name || "",
-      resourceType: "s3",
-      name: bucket.Name || "",
-      status: "active",
-      hourlyCost: 0, // S3 cost depends on storage used, not tracked per-bucket here
-      metadata: {
-        creationDate: bucket.CreationDate?.toISOString(),
-      },
-    });
+  try {
+    const [buckets] = await storage.getBuckets({ project: config.gcp.projectId });
+
+    for (const bucket of buckets || []) {
+      results.push({
+        resourceId: bucket.name || "",
+        resourceType: "gcs",
+        name: bucket.name || "",
+        status: "active",
+        hourlyCost: 0, // GCS cost depends on storage used + operations
+        metadata: {
+          location: bucket.metadata?.location,
+          storageClass: bucket.metadata?.storageClass,
+          timeCreated: bucket.metadata?.timeCreated,
+          labels: bucket.metadata?.labels,
+        },
+      });
+    }
+  } catch (err: any) {
+    console.error("[Inventory] Error listing GCS buckets:", err.message);
   }
 
   return results;

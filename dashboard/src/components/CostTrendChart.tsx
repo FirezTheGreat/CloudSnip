@@ -12,11 +12,11 @@ import {
 import type { CostTrend } from "../types";
 
 const COLORS: Record<string, string> = {
-  ec2: "#3b82f6",
-  lambda: "#8b5cf6",
-  s3: "#10b981",
-  ebs: "#f59e0b",
-  rds: "#ef4444",
+  compute: "#3b82f6",
+  cloud_function: "#8b5cf6",
+  gcs: "#10b981",
+  disk: "#f59e0b",
+  cloud_sql: "#ef4444",
 };
 
 interface Props {

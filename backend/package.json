@@ -1,7 +1,7 @@
 {
   "name": "cloud-cost-intel-backend",
   "version": "1.0.0",
-  "description": "Cloud Cost Intelligence System — Express + TypeScript backend",
+  "description": "Cloud Cost Intelligence System — Express + TypeScript backend (GCP)",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
@@ -9,11 +9,11 @@
     "db:migrate": "tsx src/migrations/run.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudwatch": "^3.600.0",
-    "@aws-sdk/client-cost-explorer": "^3.600.0",
-    "@aws-sdk/client-ec2": "^3.600.0",
-    "@aws-sdk/client-lambda": "^3.600.0",
-    "@aws-sdk/client-s3": "^3.600.0",
+    "@google-cloud/billing": "^4.0.0",
+    "@google-cloud/compute": "^4.0.0",
+    "@google-cloud/functions": "^3.0.0",
+    "@google-cloud/monitoring": "^4.0.0",
+    "@google-cloud/storage": "^7.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",

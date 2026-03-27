@@ -1,6 +1,6 @@
 # Cloud Cost Intelligence System
 
-A real-time cloud cost monitoring, anomaly detection, and auto-optimization platform that connects to live AWS resources, detects genuine cost anomalies using ML, and autonomously executes safe optimizations via cloud APIs.
+A real-time cloud cost monitoring, anomaly detection, and auto-optimization platform that connects to live GCP resources, detects genuine cost anomalies using ML, and autonomously executes safe optimizations via cloud APIs.
 
 ---
 
@@ -22,16 +22,17 @@ A real-time cloud cost monitoring, anomaly detection, and auto-optimization plat
 │                    EXPRESS BACKEND (:4000)                              │
 │  ┌──────────────┐  ┌───────┴────────┐  ┌──────────────────────────┐   │
 │  │ Telemetry    │  │ API Routes     │  │ Auto-Optimizer           │   │
-│  │ Collector    │  │ /api/costs     │  │ (stop EC2, cap Lambda,   │   │
-│  │ (node-cron   │  │ /api/anomalies │  │  delete volumes, tag)    │   │
+│  │ Collector    │  │ /api/costs     │  │ (stop VM, cap Function,  │   │
+│  │ (node-cron   │  │ /api/anomalies │  │  delete disks, label)    │   │
 │  │  every 5min) │  │ /api/actions   │  │                          │   │
 │  └──────┬───────┘  └────────────────┘  └────────────┬─────────────┘   │
 │         │                                            │                 │
-│         │  AWS SDK v3                                │  AWS SDK v3     │
+│         │  GCP Client Libraries                      │  GCP APIs       │
 │         ▼                                            ▼                 │
 │  ┌──────────────┐                           ┌──────────────────────┐   │
-│  │ CloudWatch   │                           │ EC2 / Lambda / S3    │   │
-│  │ Cost Explorer│                           │ stop / limit / clean │   │
+│  │ Cloud        │                           │ Compute / Functions  │   │
+│  │ Monitoring   │                           │ stop / limit / clean │   │
+│  │ + Billing    │                           │                      │   │
 │  └──────┬───────┘                           └──────────────────────┘   │
 │         │                                                              │
 │         ▼                                                              │
@@ -58,7 +59,7 @@ cloud-cost-intelligence/
 ├── README.md                          # This file
 ├── docs/
 │   ├── ARCHITECTURE.md                # Detailed architecture decisions
-│   ├── AWS_SETUP.md                   # Step-by-step AWS provisioning guide
+│   ├── GCP_SETUP.md                   # Step-by-step GCP provisioning guide
 │   ├── DATABASE_SCHEMA.md             # Full schema documentation
 │   └── DEMO_PLAYBOOK.md              # How to trigger & demo anomalies
 │
@@ -70,13 +71,13 @@ cloud-cost-intelligence/
 │   ├── .env.example
 │   └── src/
 │       ├── index.ts                   # Express server + WebSocket setup
-│       ├── config.ts                  # Env vars, AWS config, thresholds
+│       ├── config.ts                  # Env vars, GCP config, thresholds
 │       ├── db.ts                      # TimescaleDB connection (pg pool)
 │       │
 │       ├── collectors/                # Telemetry pipeline
-│       │   ├── cloudwatch.ts          # CPU, network, Lambda metrics
-│       │   ├── cost-explorer.ts       # Daily/hourly cost per service
-│       │   └── resource-inventory.ts  # List EC2, Lambda, EBS, S3
+│       │   ├── cloud-monitoring.ts    # CPU, network, Cloud Functions metrics
+│       │   ├── cloud-billing.ts       # Cost estimation per service
+│       │   └── resource-inventory.ts  # List VMs, Functions, Disks, Buckets
 │       │
 │       ├── scheduler.ts              # node-cron: poll every 5 min
 │       │
@@ -85,12 +86,11 @@ cloud-cost-intelligence/
 │       │
 │       ├── optimizer/                 # Autonomous actions
 │       │   ├── engine.ts             # Decision logic: which action to take
-│       │   ├── actions/
-│       │   │   ├── stop-idle-ec2.ts
-│       │   │   ├── cap-lambda.ts
-│       │   │   ├── cleanup-volumes.ts
-│       │   │   └── tag-resources.ts
-│       │   └── audit.ts             # Before/after cost logging
+│       │   └── actions/
+│       │       ├── stop-idle-vm.ts
+│       │       ├── cap-cloud-function.ts
+│       │       ├── cleanup-disks.ts
+│       │       └── label-resources.ts
 │       │
 │       ├── routes/                   # REST API
 │       │   ├── costs.ts
@@ -103,7 +103,7 @@ cloud-cost-intelligence/
 ├── ml-service/                       # Python anomaly detection
 │   ├── requirements.txt
 │   ├── Dockerfile
-│   └── app.py                        # Flask + Isolation Forest (~50 lines)
+│   └── app.py                        # Flask + Isolation Forest (~60 lines)
 │
 └── dashboard/                        # React + Recharts
     ├── package.json
@@ -128,7 +128,7 @@ cloud-cost-intelligence/
 ## Tech Stack Decisions & Rationale
 
 ### Why Express + TypeScript (not FastAPI)?
-You know TypeScript. The AWS SDK v3 is JavaScript-native. You'll be writing cloud API calls, cron jobs, and REST routes — all of which are natural in Express. Zero context switching except for the 50-line Python ML service.
+You know TypeScript. GCP has official Node.js client libraries (`@google-cloud/*`) with full TypeScript support. You'll be writing cloud API calls, cron jobs, and REST routes — all natural in Express. Zero context switching except for the 50-line Python ML service.
 
 ### Why TimescaleDB (not InfluxDB/Prometheus)?
 - It's just PostgreSQL with a time-series extension — you already know SQL
@@ -153,18 +153,18 @@ You know TypeScript. The AWS SDK v3 is JavaScript-native. You'll be writing clou
 
 ```
 Every 5 minutes (node-cron):
-  1. Collector pulls CloudWatch metrics (CPU, invocations, network)
-  2. Collector pulls Cost Explorer data (spend per service)
-  3. Collector lists resources (EC2 instances, Lambdas, EBS volumes)
+  1. Collector pulls Cloud Monitoring metrics (CPU, network, function invocations)
+  2. Collector estimates cost data from resource inventory + known GCP pricing
+  3. Collector lists resources (Compute VMs, Cloud Functions, Persistent Disks, GCS Buckets)
   4. All data written to TimescaleDB `metrics` table
   5. Last 2 hours of metrics sent to ML service POST /detect
   6. ML service returns anomaly scores per metric
   7. Scores above threshold → written to `anomalies` table
   8. Anomaly triggers optimizer engine:
-     - Idle EC2 (CPU < 5% for 30 min)  → stop instance
-     - Runaway Lambda (invocations spike 10x) → cap concurrency
-     - Unattached EBS volume (no attachments) → delete
-     - Untagged resource → tag with "needs-review"
+     - Idle VM (CPU < 5% for 30 min) → stop instance
+     - Runaway Cloud Function (invocations spike 10x) → cap max instances
+     - Unattached Persistent Disk (no users) → delete
+     - Unlabeled resource → label with "needs-review"
   9. Before/after cost delta written to `actions` table
   10. WebSocket pushes anomaly + action to dashboard
 ```
@@ -177,11 +177,11 @@ Every 5 minutes (node-cron):
 | Column | Type | Description |
 |--------|------|-------------|
 | time | TIMESTAMPTZ | When the metric was collected |
-| resource_id | TEXT | AWS resource ID (i-xxx, arn:xxx) |
-| resource_type | TEXT | ec2, lambda, s3, ebs, rds |
-| metric_name | TEXT | cpu_utilization, invocation_count, estimated_cost, etc. |
+| resource_id | TEXT | GCP resource ID (instance ID, function name, disk ID) |
+| resource_type | TEXT | compute, cloud_function, gcs, disk, cloud_sql |
+| metric_name | TEXT | cpuutilization, invocations, estimated_cost, etc. |
 | value | DOUBLE PRECISION | The metric value |
-| region | TEXT | us-east-1, etc. |
+| region | TEXT | us-central1, etc. |
 
 ### `anomalies` — detected anomalies
 | Column | Type | Description |
@@ -189,8 +189,8 @@ Every 5 minutes (node-cron):
 | id | UUID | Primary key |
 | detected_at | TIMESTAMPTZ | When detected |
 | resource_id | TEXT | Which resource |
-| resource_type | TEXT | ec2, lambda, etc. |
-| anomaly_type | TEXT | idle_instance, cost_spike, runaway_function, unused_volume |
+| resource_type | TEXT | compute, cloud_function, etc. |
+| anomaly_type | TEXT | idle_instance, cost_spike, runaway_function, unused_disk |
 | severity | TEXT | low, medium, high, critical |
 | anomaly_score | DOUBLE PRECISION | ML confidence (0-1) |
 | metric_snapshot | JSONB | The metrics that triggered detection |
@@ -204,7 +204,7 @@ Every 5 minutes (node-cron):
 | executed_at | TIMESTAMPTZ | When the action ran |
 | anomaly_id | UUID | FK to anomalies |
 | resource_id | TEXT | Which resource |
-| action_type | TEXT | stop_instance, cap_concurrency, delete_volume, tag_resource |
+| action_type | TEXT | stop_instance, cap_instances, delete_disk, label_resource |
 | status | TEXT | pending, executing, success, failed, rolled_back |
 | cost_before | DOUBLE PRECISION | Hourly cost before action |
 | cost_after | DOUBLE PRECISION | Hourly cost after action |
@@ -216,94 +216,49 @@ Every 5 minutes (node-cron):
 | Column | Type | Description |
 |--------|------|-------------|
 | time | TIMESTAMPTZ | Day |
-| service | TEXT | EC2, Lambda, S3, RDS |
+| service | TEXT | Compute Engine, Cloud Functions, Cloud Storage, Cloud SQL |
 | total_cost | DOUBLE PRECISION | Total spend for the day |
 | resource_count | INT | Number of resources |
 
 ---
 
-## AWS IAM Policy (Minimum Required)
+## GCP Service Account Roles (Minimum Required)
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "CostReadAccess",
-      "Effect": "Allow",
-      "Action": [
-        "ce:GetCostAndUsage",
-        "ce:GetCostForecast"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "CloudWatchReadAccess",
-      "Effect": "Allow",
-      "Action": [
-        "cloudwatch:GetMetricData",
-        "cloudwatch:ListMetrics",
-        "cloudwatch:GetMetricStatistics"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "EC2ReadAndManage",
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeInstances",
-        "ec2:DescribeVolumes",
-        "ec2:StopInstances",
-        "ec2:DeleteVolume",
-        "ec2:CreateTags"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "LambdaReadAndManage",
-      "Effect": "Allow",
-      "Action": [
-        "lambda:ListFunctions",
-        "lambda:GetFunction",
-        "lambda:PutFunctionConcurrency"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "S3ReadAccess",
-      "Effect": "Allow",
-      "Action": [
-        "s3:ListAllMyBuckets",
-        "s3:GetBucketTagging"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+Assign these roles to your service account:
+
+| Role | Purpose |
+|------|---------|
+| `roles/compute.viewer` | List and get VM instances and disks |
+| `roles/compute.instanceAdmin.v1` | Stop instances, set labels |
+| `roles/monitoring.viewer` | Read Cloud Monitoring metrics |
+| `roles/cloudfunctions.viewer` | List Cloud Functions |
+| `roles/cloudfunctions.developer` | Update function config (max instances) |
+| `roles/storage.objectViewer` | List GCS buckets |
+| `roles/billing.viewer` | Read billing data |
 
 ---
 
-## AWS Resources to Provision (Free Tier)
+## GCP Resources to Provision (Free Tier)
 
 | Resource | Spec | Purpose | Free Tier Limit |
 |----------|------|---------|-----------------|
-| EC2 instance | t2.micro, Amazon Linux 2 | "Subject" to monitor + detect idle | 750 hrs/month |
-| Lambda function | Node.js 18, 128MB, no concurrency cap | "Subject" for runaway detection | 1M requests/month |
-| S3 bucket | Standard, empty | "Subject" for cost tracking | 5 GB |
-| RDS instance | db.t3.micro, PostgreSQL | "Subject" for cost tracking | 750 hrs/month |
-| EBS volume | 8 GB gp2, unattached | "Subject" for cleanup detection | 30 GB total |
-| TimescaleDB | Runs on your laptop/EC2 via Docker | Your app's database | N/A (self-hosted) |
+| Compute Engine VM | e2-micro, Debian | "Subject" to monitor + detect idle | 1 e2-micro free/month (us regions) |
+| Cloud Function | Node.js 18, 128MB, no instance cap | "Subject" for runaway detection | 2M invocations/month |
+| GCS Bucket | Standard, empty | "Subject" for cost tracking | 5 GB |
+| Persistent Disk | 10 GB pd-standard, unattached | "Subject" for cleanup detection | 30 GB total |
+| Cloud SQL | db-f1-micro, PostgreSQL (optional) | "Subject" for cost tracking | Not free — skip if budget is tight |
+| TimescaleDB | Runs on your laptop/VM via Docker | Your app's database | N/A (self-hosted) |
 
 ---
 
 ## Environment Variables
 
 ```bash
-# AWS credentials (IAM user with policy above)
-AWS_ACCESS_KEY_ID=your_key
-AWS_SECRET_ACCESS_KEY=your_secret
-AWS_REGION=us-east-1
+# GCP credentials (service account key file)
+GCP_PROJECT_ID=your-project-id
+GCP_ZONE=us-central1-a
+GCP_REGION=us-central1
+GOOGLE_APPLICATION_CREDENTIALS=./service-account-key.json
 
 # TimescaleDB
 DATABASE_URL=postgresql://costintel:password@localhost:5432/costintel
@@ -312,11 +267,11 @@ DATABASE_URL=postgresql://costintel:password@localhost:5432/costintel
 ML_SERVICE_URL=http://localhost:5001
 
 # Thresholds (tune these)
-IDLE_CPU_THRESHOLD=5          # % — below this = idle
-IDLE_DURATION_MINUTES=30      # How long before flagging
-LAMBDA_SPIKE_MULTIPLIER=10   # 10x normal invocations = spike
-ANOMALY_SCORE_THRESHOLD=0.7  # ML score above this = anomaly
-MAX_LAMBDA_CONCURRENCY=5     # Cap to set when limiting
+IDLE_CPU_THRESHOLD=5            # % — below this = idle
+IDLE_DURATION_MINUTES=30        # How long before flagging
+FUNCTION_SPIKE_MULTIPLIER=10   # 10x normal invocations = spike
+ANOMALY_SCORE_THRESHOLD=0.7    # ML score above this = anomaly
+MAX_FUNCTION_INSTANCES=5       # Cap to set when limiting
 
 # Server
 PORT=4000
@@ -328,12 +283,12 @@ WS_PORT=4001
 ## Implementation Order — What to Build & When
 
 ### Phase 1: Foundation (Hours 0–8)
-**Goal: See real AWS numbers in your terminal**
+**Goal: See real GCP numbers in your terminal**
 
-1. Create AWS free tier account + IAM user
+1. Create GCP free tier account + service account
 2. `docker-compose up` → TimescaleDB running
-3. Backend: single file that calls `CloudWatch.getMetricData()` and prints CPU
-4. Backend: call `CostExplorer.getCostAndUsage()` and print daily spend
+3. Backend: single file that calls Cloud Monitoring API and prints CPU
+4. Backend: list Compute Engine instances and print them
 5. Write results to TimescaleDB → query them back
 6. **Checkpoint: you can run `SELECT * FROM metrics` and see real data**
 
@@ -341,7 +296,7 @@ WS_PORT=4001
 **Goal: Anomalies are being detected automatically**
 
 1. Set up node-cron to poll every 5 minutes
-2. Collectors: CloudWatch, Cost Explorer, resource inventory — all writing to DB
+2. Collectors: Cloud Monitoring, cost estimation, resource inventory — all writing to DB
 3. Python ML service: Flask + Isolation Forest, one POST route
 4. Node anomaly client calls ML service, writes scores to `anomalies` table
 5. **Checkpoint: insert fake spiky data, see anomaly detected**
@@ -350,9 +305,9 @@ WS_PORT=4001
 **Goal: System takes action and logs savings**
 
 1. Optimizer engine: reads anomalies, decides which action
-2. Actions: stop EC2, cap Lambda, delete EBS, tag resources
+2. Actions: stop VM, cap Cloud Function, delete Persistent Disk, label resources
 3. Audit trail: before/after cost written to `actions` table
-4. **Checkpoint: leave EC2 idle → system stops it → savings logged**
+4. **Checkpoint: leave VM idle → system stops it → savings logged**
 
 ### Phase 4: Dashboard (Hours 32–44)
 **Goal: Beautiful, live-updating dashboard**
@@ -366,9 +321,9 @@ WS_PORT=4001
 ### Phase 5: Demo Prep (Hours 44–48)
 **Goal: Reliable 3-minute demo**
 
-1. Trigger anomalies deliberately (idle EC2, Lambda spam, orphan volume)
+1. Trigger anomalies deliberately (idle VM, Cloud Function spam, orphan disk)
 2. Practice the walkthrough
-3. Have fallback screenshots/recordings in case AWS is slow
+3. Have fallback screenshots/recordings in case GCP is slow
 
 ---
 
@@ -393,16 +348,16 @@ cd backend && npm run db:migrate
 # 6. Start everything
 cd backend && npm run dev          # Express on :4000
 cd ml-service && python app.py     # Flask on :5001
-cd dashboard && npm start          # React on :3000
+cd dashboard && npm run dev        # React on :3000
 ```
 
 ---
 
 ## Critical Success Metrics for Judges
 
-1. **Real data** — not mocked. Show the AWS console side-by-side with your dashboard.
+1. **Real data** — not mocked. Show the GCP Console side-by-side with your dashboard.
 2. **Live detection** — trigger an anomaly during the demo, watch it appear.
-3. **Concrete savings** — "Stopped i-0abc123, saving $0.023/hr → $16.56/month projected"
+3. **Concrete savings** — "Stopped cost-intel-demo-vm, saving $0.0076/hr → $5.55/month projected"
 4. **Audit trail** — every action logged with before/after, timestamp, status.
 5. **Architecture clarity** — the diagram above on your first slide.
 

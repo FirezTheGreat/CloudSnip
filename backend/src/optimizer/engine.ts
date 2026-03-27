@@ -1,9 +1,9 @@
 import { query } from "../db";
 import { config } from "../config";
-import { stopIdleEC2 } from "./actions/stop-idle-ec2";
-import { capLambdaConcurrency } from "./actions/cap-lambda";
-import { cleanupVolumes } from "./actions/cleanup-volumes";
-import { tagResources } from "./actions/tag-resources";
+import { stopIdleVM } from "./actions/stop-idle-vm";
+import { capCloudFunction } from "./actions/cap-cloud-function";
+import { cleanupDisks } from "./actions/cleanup-disks";
+import { labelResources } from "./actions/label-resources";
 import { broadcast } from "../websocket";
 
 interface AnomalyRecord {
@@ -23,10 +23,10 @@ type ActionHandler = (anomaly: AnomalyRecord) => Promise<{
 }>;
 
 const ACTION_MAP: Record<string, { handler: ActionHandler; actionType: string }> = {
-  idle_instance: { handler: stopIdleEC2, actionType: "stop_instance" },
-  runaway_function: { handler: capLambdaConcurrency, actionType: "cap_concurrency" },
-  unused_volume: { handler: cleanupVolumes, actionType: "delete_volume" },
-  untagged_resource: { handler: tagResources, actionType: "tag_resource" },
+  idle_instance: { handler: stopIdleVM, actionType: "stop_instance" },
+  runaway_function: { handler: capCloudFunction, actionType: "cap_instances" },
+  unused_volume: { handler: cleanupDisks, actionType: "delete_disk" },
+  untagged_resource: { handler: labelResources, actionType: "label_resource" },
 };
 
 export async function processAnomalies() {

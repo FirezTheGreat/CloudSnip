@@ -36,23 +36,23 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -----------------------------------------------------------
 -- TABLE: metrics
--- Raw telemetry data from AWS CloudWatch + Cost Explorer
+-- Raw telemetry data from GCP Cloud Monitoring
 -- This is a hypertable — TimescaleDB auto-partitions by time
 -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS metrics (
     time            TIMESTAMPTZ     NOT NULL,
     resource_id     TEXT            NOT NULL,
-    resource_type   TEXT            NOT NULL,    -- ec2, lambda, s3, ebs, rds
-    metric_name     TEXT            NOT NULL,    -- cpu_utilization, invocation_count, etc.
+    resource_type   TEXT            NOT NULL,    -- compute, cloud_function, gcs, disk, cloud_sql
+    metric_name     TEXT            NOT NULL,    -- cpuutilization, invocations, etc.
     value           DOUBLE PRECISION NOT NULL,
     unit            TEXT,                        -- Percent, Count, Bytes, USD
-    region          TEXT            DEFAULT 'us-east-1'
+    region          TEXT            DEFAULT 'us-central1'
 );
 
 -- Convert to hypertable (partitioned by time, 1-day chunks)
 SELECT create_hypertable('metrics', 'time', if_not_exists => TRUE);
 
--- Index for common queries: "give me all CPU data for this instance in the last 2 hours"
+-- Index for common queries: "give me all CPU data for this VM in the last 2 hours"
 CREATE INDEX IF NOT EXISTS idx_metrics_resource_time
     ON metrics (resource_id, time DESC);
 
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS anomalies (
     detected_at     TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     resource_id     TEXT            NOT NULL,
     resource_type   TEXT            NOT NULL,
-    anomaly_type    TEXT            NOT NULL,    -- idle_instance, cost_spike, runaway_function, unused_volume, untagged_resource
+    anomaly_type    TEXT            NOT NULL,    -- idle_instance, cost_spike, runaway_function, unused_disk, unlabeled_resource
     severity        TEXT            NOT NULL DEFAULT 'medium',  -- low, medium, high, critical
     anomaly_score   DOUBLE PRECISION NOT NULL,  -- 0.0 to 1.0 from Isolation Forest
     metric_snapshot JSONB,                       -- the metric values that triggered this
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS actions (
     anomaly_id              UUID            REFERENCES anomalies(id),
     resource_id             TEXT            NOT NULL,
     resource_type           TEXT            NOT NULL,
-    action_type             TEXT            NOT NULL,   -- stop_instance, cap_concurrency, delete_volume, tag_resource
+    action_type             TEXT            NOT NULL,   -- stop_instance, cap_instances, delete_disk, label_resource
     status                  TEXT            NOT NULL DEFAULT 'pending',  -- pending, executing, success, failed, rolled_back
     cost_before_hourly      DOUBLE PRECISION,           -- $/hr before action
     cost_after_hourly       DOUBLE PRECISION,           -- $/hr after action
@@ -121,7 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_actions_resource
 -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS cost_summaries (
     time            TIMESTAMPTZ     NOT NULL,
-    service         TEXT            NOT NULL,    -- AmazonEC2, AWSLambda, AmazonS3, AmazonRDS
+    service         TEXT            NOT NULL,    -- Compute Engine, Cloud Functions, Cloud Storage, Persistent Disk
     total_cost      DOUBLE PRECISION NOT NULL,
     currency        TEXT            DEFAULT 'USD',
     resource_count  INT             DEFAULT 0
@@ -134,19 +134,19 @@ CREATE INDEX IF NOT EXISTS idx_cost_summaries_service_time
 
 -----------------------------------------------------------
 -- TABLE: resources
--- Current inventory of monitored AWS resources
+-- Current inventory of monitored GCP resources
 -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS resources (
     resource_id     TEXT            PRIMARY KEY,
     resource_type   TEXT            NOT NULL,
     name            TEXT,
-    status          TEXT,           -- running, stopped, available, etc.
-    region          TEXT            DEFAULT 'us-east-1',
+    status          TEXT,           -- RUNNING, STOPPED, active, attached, unattached, etc.
+    region          TEXT            DEFAULT 'us-central1',
     tags            JSONB,
     hourly_cost     DOUBLE PRECISION DEFAULT 0,
     first_seen      TIMESTAMPTZ     DEFAULT NOW(),
     last_seen       TIMESTAMPTZ     DEFAULT NOW(),
-    metadata        JSONB           -- instance type, volume size, function runtime, etc.
+    metadata        JSONB           -- machine type, disk size, function runtime, etc.
 );
 
 CREATE INDEX IF NOT EXISTS idx_resources_type
@@ -181,8 +181,8 @@ SELECT
     AVG(value) AS avg_cpu,
     MAX(time) AS last_seen
 FROM metrics
-WHERE metric_name = 'cpu_utilization'
-    AND resource_type = 'ec2'
+WHERE metric_name = 'cpuutilization'
+    AND resource_type = 'compute'
     AND time > NOW() - INTERVAL '30 minutes'
 GROUP BY resource_id
 HAVING AVG(value) < 5.0;
@@ -223,7 +223,7 @@ LIMIT 20;
 
 ```sql
 SELECT
-    (SELECT COUNT(*) FROM resources WHERE status = 'running') AS active_resources,
+    (SELECT COUNT(*) FROM resources WHERE status IN ('RUNNING', 'active')) AS active_resources,
     (SELECT COUNT(*) FROM anomalies WHERE resolved = FALSE) AS open_anomalies,
     (SELECT COALESCE(SUM(savings_monthly_projected), 0) FROM actions WHERE status = 'success') AS total_monthly_savings,
     (SELECT COUNT(*) FROM actions WHERE status = 'success') AS total_actions_taken;
@@ -245,31 +245,31 @@ SELECT add_retention_policy('cost_summaries', INTERVAL '90 days');
 
 ## Seed Data for Testing
 
-If Cost Explorer hasn't activated yet (24-hour wait), use this seed data to test your dashboard:
+If you don't have enough real metric data yet, use this seed data to test your dashboard:
 
 ```sql
--- Seed some metrics
+-- Seed some metrics (Compute Engine VM going idle)
 INSERT INTO metrics (time, resource_id, resource_type, metric_name, value, unit) VALUES
-    (NOW() - INTERVAL '2 hours', 'i-demo123', 'ec2', 'cpu_utilization', 45.2, 'Percent'),
-    (NOW() - INTERVAL '1.5 hours', 'i-demo123', 'ec2', 'cpu_utilization', 38.7, 'Percent'),
-    (NOW() - INTERVAL '1 hour', 'i-demo123', 'ec2', 'cpu_utilization', 12.1, 'Percent'),
-    (NOW() - INTERVAL '30 minutes', 'i-demo123', 'ec2', 'cpu_utilization', 3.2, 'Percent'),
-    (NOW() - INTERVAL '25 minutes', 'i-demo123', 'ec2', 'cpu_utilization', 2.8, 'Percent'),
-    (NOW() - INTERVAL '20 minutes', 'i-demo123', 'ec2', 'cpu_utilization', 1.9, 'Percent'),
-    (NOW() - INTERVAL '15 minutes', 'i-demo123', 'ec2', 'cpu_utilization', 2.1, 'Percent'),
-    (NOW() - INTERVAL '10 minutes', 'i-demo123', 'ec2', 'cpu_utilization', 1.5, 'Percent'),
-    (NOW() - INTERVAL '5 minutes', 'i-demo123', 'ec2', 'cpu_utilization', 1.2, 'Percent');
+    (NOW() - INTERVAL '2 hours', '1234567890123', 'compute', 'cpuutilization', 45.2, 'Percent'),
+    (NOW() - INTERVAL '1.5 hours', '1234567890123', 'compute', 'cpuutilization', 38.7, 'Percent'),
+    (NOW() - INTERVAL '1 hour', '1234567890123', 'compute', 'cpuutilization', 12.1, 'Percent'),
+    (NOW() - INTERVAL '30 minutes', '1234567890123', 'compute', 'cpuutilization', 3.2, 'Percent'),
+    (NOW() - INTERVAL '25 minutes', '1234567890123', 'compute', 'cpuutilization', 2.8, 'Percent'),
+    (NOW() - INTERVAL '20 minutes', '1234567890123', 'compute', 'cpuutilization', 1.9, 'Percent'),
+    (NOW() - INTERVAL '15 minutes', '1234567890123', 'compute', 'cpuutilization', 2.1, 'Percent'),
+    (NOW() - INTERVAL '10 minutes', '1234567890123', 'compute', 'cpuutilization', 1.5, 'Percent'),
+    (NOW() - INTERVAL '5 minutes', '1234567890123', 'compute', 'cpuutilization', 1.2, 'Percent');
 
--- This will show a clear pattern: CPU drops from 45% to 1.2% — idle instance
+-- This will show a clear pattern: CPU drops from 45% to 1.2% — idle VM
 
--- Seed a Lambda spike
+-- Seed a Cloud Function spike
 INSERT INTO metrics (time, resource_id, resource_type, metric_name, value, unit) VALUES
-    (NOW() - INTERVAL '2 hours', 'fn-demo456', 'lambda', 'invocation_count', 10, 'Count'),
-    (NOW() - INTERVAL '1.5 hours', 'fn-demo456', 'lambda', 'invocation_count', 12, 'Count'),
-    (NOW() - INTERVAL '1 hour', 'fn-demo456', 'lambda', 'invocation_count', 8, 'Count'),
-    (NOW() - INTERVAL '30 minutes', 'fn-demo456', 'lambda', 'invocation_count', 150, 'Count'),
-    (NOW() - INTERVAL '25 minutes', 'fn-demo456', 'lambda', 'invocation_count', 200, 'Count'),
-    (NOW() - INTERVAL '20 minutes', 'fn-demo456', 'lambda', 'invocation_count', 180, 'Count');
+    (NOW() - INTERVAL '2 hours', 'cost-intel-demo-function', 'cloud_function', 'invocations', 10, 'Count'),
+    (NOW() - INTERVAL '1.5 hours', 'cost-intel-demo-function', 'cloud_function', 'invocations', 12, 'Count'),
+    (NOW() - INTERVAL '1 hour', 'cost-intel-demo-function', 'cloud_function', 'invocations', 8, 'Count'),
+    (NOW() - INTERVAL '30 minutes', 'cost-intel-demo-function', 'cloud_function', 'invocations', 150, 'Count'),
+    (NOW() - INTERVAL '25 minutes', 'cost-intel-demo-function', 'cloud_function', 'invocations', 200, 'Count'),
+    (NOW() - INTERVAL '20 minutes', 'cost-intel-demo-function', 'cloud_function', 'invocations', 180, 'Count');
 
 -- This will show a clear spike: 10 → 200 invocations
 ```

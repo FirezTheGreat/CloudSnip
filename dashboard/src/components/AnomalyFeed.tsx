@@ -12,7 +12,7 @@ const ANOMALY_ICONS: Record<string, string> = {
   idle_instance: "IDLE",
   runaway_function: "SPIKE",
   cost_spike: "COST",
-  unused_volume: "DISK",
+  unused_disk: "DISK",
   usage_anomaly: "WARN",
 };
 

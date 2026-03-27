@@ -2,22 +2,22 @@ import React from "react";
 import type { Resource } from "../types";
 
 const STATUS_COLORS: Record<string, string> = {
-  running: "#10b981",
+  RUNNING: "#10b981",
   active: "#10b981",
-  stopped: "#ef4444",
-  stopping: "#f59e0b",
-  terminated: "#6b7280",
+  STOPPED: "#ef4444",
+  STOPPING: "#f59e0b",
+  TERMINATED: "#6b7280",
   attached: "#3b82f6",
   unattached: "#f97316",
-  available: "#eab308",
+  READY: "#eab308",
 };
 
 const TYPE_ICONS: Record<string, string> = {
-  ec2: "SERVER",
-  lambda: "FN",
-  s3: "BUCKET",
-  ebs: "DISK",
-  rds: "DB",
+  compute: "VM",
+  cloud_function: "FN",
+  gcs: "BUCKET",
+  disk: "DISK",
+  cloud_sql: "DB",
 };
 
 interface Props {
