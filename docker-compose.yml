@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: costintel-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: costintel
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: costintel
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  ml-service:
+    build: ./ml-service
+    container_name: costintel-ml
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+
+volumes:
+  timescaledb_data:
