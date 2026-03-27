@@ -17,8 +17,9 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({
     status: "ok",
-    service: "cloud-cost-intel-server",
-    dryRun: config.dryRun,
+    service: "cloudsnip-server",
+    simulation_mode: config.simulationMode,
+    dry_run: config.dryRun,
     uptime: process.uptime(),
   });
 });
@@ -31,13 +32,37 @@ app.use("/api/dashboard", dashboardRoutes);
 async function start() {
   await connectDB();
 
+  if (config.simulationMode) {
+    const { backfillMetricHistory, simulateCostData, simulateResourceInventory } = await import("./simulation/engine");
+    console.log("[Startup] Simulation mode — seeding initial data...");
+    await simulateResourceInventory();
+    await backfillMetricHistory();
+    await simulateCostData();
+  }
+
   app.listen(config.server.port, () => {
-    console.log(`\n╔══════════════════════════════════════════════╗`);
-    console.log(`║  Cloud Cost Intelligence System              ║`);
-    console.log(`║  API:       http://localhost:${config.server.port}             ║`);
-    console.log(`║  WebSocket: ws://localhost:${config.server.wsPort}              ║`);
-    console.log(`║  Dry Run:   ${config.dryRun ? "YES (no real actions)" : "NO (live mode)"}       ║`);
-    console.log(`╚══════════════════════════════════════════════╝\n`);
+    const mode = config.simulationMode ? "SIMULATION" : "LIVE GCP";
+    const modeColor = config.simulationMode ? "🟡" : "🟢";
+
+    console.log(`\n╔══════════════════════════════════════════════════════╗`);
+    console.log(`║                                                      ║`);
+    console.log(`║   ⚡  CloudSnip — Cost Intelligence System           ║`);
+    console.log(`║                                                      ║`);
+    console.log(`║   API:        http://localhost:${config.server.port}                  ║`);
+    console.log(`║   WebSocket:  ws://localhost:${config.server.wsPort}                   ║`);
+    console.log(`║   Mode:       ${modeColor}  ${mode.padEnd(36)}  ║`);
+    console.log(`║   Dry Run:    ${config.dryRun ? "YES" : "NO"}                                    ║`);
+    console.log(`║   Schedule:   ${config.cronSchedule.padEnd(36)}  ║`);
+    console.log(`║                                                      ║`);
+    console.log(`╚══════════════════════════════════════════════════════╝\n`);
+
+    if (config.simulationMode) {
+      console.log("  Demo endpoints:");
+      console.log("    POST /api/dashboard/demo/idle-vm        — Trigger idle VM scenario");
+      console.log("    POST /api/dashboard/demo/function-spike  — Trigger function spike");
+      console.log("    POST /api/dashboard/demo/full-scenario   — Both scenarios combined");
+      console.log("    POST /api/dashboard/demo/reset           — Reset to normal\n");
+    }
 
     initWebSocket();
     startScheduler();

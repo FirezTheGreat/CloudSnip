@@ -73,54 +73,142 @@ export async function detectAnomalies(): Promise<MLAnomaly[]> {
     })),
   };
 
+  let detectedAnomalies: MLAnomaly[];
+
   try {
     const response = await fetch(`${config.ml.url}/detect`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
-      console.error(`[Anomaly] ML service returned ${response.status}`);
-      return [];
+      console.warn(`[Anomaly] ML service returned ${response.status} — falling back to rules`);
+      detectedAnomalies = runRuleBasedDetection(payload.metrics);
+    } else {
+      const data = (await response.json()) as MLResponse;
+      console.log(`[Anomaly] ML service analyzed ${data.model_info.samples_used} samples, found ${data.anomalies.length} anomalies`);
+      detectedAnomalies = data.anomalies;
     }
-
-    const data: MLResponse = await response.json();
-    console.log(`[Anomaly] ML service analyzed ${data.model_info.samples_used} samples, found ${data.anomalies.length} anomalies`);
-
-    const confirmedAnomalies: MLAnomaly[] = [];
-
-    for (const anomaly of data.anomalies) {
-      if (anomaly.anomaly_score < config.thresholds.anomalyScoreThreshold) continue;
-
-      const severityFn = SEVERITY_MAP[anomaly.anomaly_type] || SEVERITY_MAP.usage_anomaly;
-      const severity = severityFn(anomaly.anomaly_score);
-      const description = buildDescription(anomaly);
-
-      const resource = await Resource.findOne(
-        { resource_id: anomaly.resource_id },
-        { resource_type: 1 }
-      ).lean();
-
-      await Anomaly.create({
-        resource_id: anomaly.resource_id,
-        resource_type: resource?.resource_type || "unknown",
-        anomaly_type: anomaly.anomaly_type,
-        severity,
-        anomaly_score: anomaly.anomaly_score,
-        metric_snapshot: anomaly.latest_metrics,
-        description,
-      });
-
-      confirmedAnomalies.push(anomaly);
-    }
-
-    console.log(`[Anomaly] ${confirmedAnomalies.length} anomalies above threshold (${config.thresholds.anomalyScoreThreshold})`);
-    return confirmedAnomalies;
   } catch (err: any) {
-    console.error("[Anomaly] ML service error:", err.message);
-    return [];
+    console.warn(`[Anomaly] ML service unavailable (${err.message}) — using rule-based fallback`);
+    detectedAnomalies = runRuleBasedDetection(payload.metrics);
   }
+
+  const confirmedAnomalies: MLAnomaly[] = [];
+
+  // Also run rule-based detection to catch what ML misses
+  const ruleAnomalies = runRuleBasedDetection(payload.metrics);
+  for (const ra of ruleAnomalies) {
+    const alreadyDetected = detectedAnomalies.some((d) => d.resource_id === ra.resource_id);
+    if (!alreadyDetected) detectedAnomalies.push(ra);
+  }
+
+  for (const anomaly of detectedAnomalies) {
+    if (anomaly.anomaly_score < config.thresholds.anomalyScoreThreshold) continue;
+
+    // Reclassify generic usage_anomaly based on actual metrics
+    if (anomaly.anomaly_type === "usage_anomaly") {
+      const cpu = anomaly.latest_metrics.cpu_utilization || 0;
+      const invocations = anomaly.latest_metrics.invocation_count || 0;
+      if (cpu > 0 && cpu < config.thresholds.idleCpuPercent) {
+        anomaly.anomaly_type = "idle_instance";
+      } else if (invocations > 50) {
+        anomaly.anomaly_type = "runaway_function";
+      }
+    }
+
+    const existing = await Anomaly.findOne({
+      resource_id: anomaly.resource_id,
+      anomaly_type: anomaly.anomaly_type,
+      resolved: false,
+    });
+    if (existing) continue;
+
+    const severityFn = SEVERITY_MAP[anomaly.anomaly_type] || SEVERITY_MAP.usage_anomaly;
+    const severity = severityFn(anomaly.anomaly_score);
+    const description = buildDescription(anomaly);
+
+    const resource = await Resource.findOne(
+      { resource_id: anomaly.resource_id },
+      { resource_type: 1 }
+    ).lean();
+
+    await Anomaly.create({
+      resource_id: anomaly.resource_id,
+      resource_type: resource?.resource_type || "unknown",
+      anomaly_type: anomaly.anomaly_type,
+      severity,
+      anomaly_score: anomaly.anomaly_score,
+      metric_snapshot: anomaly.latest_metrics,
+      description,
+    });
+
+    confirmedAnomalies.push(anomaly);
+  }
+
+  console.log(`[Anomaly] ${confirmedAnomalies.length} new anomalies above threshold (${config.thresholds.anomalyScoreThreshold})`);
+  return confirmedAnomalies;
+}
+
+function runRuleBasedDetection(
+  metrics: Array<{ resource_id: string; cpu_utilization: number; invocation_count: number; network_in: number; network_out: number; estimated_hourly_cost: number }>
+): MLAnomaly[] {
+  const anomalies: MLAnomaly[] = [];
+  const byResource = new Map<string, typeof metrics>();
+
+  for (const m of metrics) {
+    const existing = byResource.get(m.resource_id) || [];
+    existing.push(m);
+    byResource.set(m.resource_id, existing);
+  }
+
+  for (const [resourceId, points] of byResource) {
+    if (points.length < 3) continue;
+
+    const recentPoints = points.slice(-6);
+
+    const avgCpu = recentPoints.reduce((s, p) => s + p.cpu_utilization, 0) / recentPoints.length;
+    if (avgCpu > 0 && avgCpu < config.thresholds.idleCpuPercent) {
+      const lp = recentPoints[recentPoints.length - 1];
+      anomalies.push({
+        resource_id: resourceId,
+        anomaly_score: Math.min(0.95, 0.7 + (config.thresholds.idleCpuPercent - avgCpu) * 0.05),
+        is_anomaly: true,
+        anomaly_type: "idle_instance",
+        contributing_factors: [`cpu_utilization: ${avgCpu.toFixed(1)} (threshold: ${config.thresholds.idleCpuPercent})`],
+        latest_metrics: { cpu_utilization: lp.cpu_utilization, invocation_count: lp.invocation_count, network_in: lp.network_in, network_out: lp.network_out, estimated_hourly_cost: lp.estimated_hourly_cost },
+      });
+      continue;
+    }
+
+    const allInvocations = points.map((p) => p.invocation_count).filter((v) => v > 0);
+    if (allInvocations.length >= 4) {
+      const baseline = allInvocations.slice(0, -2);
+      const recent = allInvocations.slice(-2);
+      const baselineAvg = baseline.reduce((s, v) => s + v, 0) / baseline.length;
+      const recentAvg = recent.reduce((s, v) => s + v, 0) / recent.length;
+
+      if (baselineAvg > 0 && recentAvg > baselineAvg * config.thresholds.functionSpikeMultiplier) {
+        const lp = recentPoints[recentPoints.length - 1];
+        anomalies.push({
+          resource_id: resourceId,
+          anomaly_score: Math.min(0.98, 0.75 + (recentAvg / baselineAvg) * 0.02),
+          is_anomaly: true,
+          anomaly_type: "runaway_function",
+          contributing_factors: [`invocations: ${recentAvg.toFixed(0)} (baseline: ${baselineAvg.toFixed(0)}, ${(recentAvg / baselineAvg).toFixed(1)}x)`],
+          latest_metrics: { cpu_utilization: lp.cpu_utilization, invocation_count: lp.invocation_count, network_in: lp.network_in, network_out: lp.network_out, estimated_hourly_cost: lp.estimated_hourly_cost },
+        });
+      }
+    }
+  }
+
+  if (anomalies.length > 0) {
+    console.log(`[Anomaly] Rule-based fallback detected ${anomalies.length} anomalies`);
+  }
+
+  return anomalies;
 }
 
 function buildDescription(anomaly: MLAnomaly): string {
@@ -134,7 +222,7 @@ function buildDescription(anomaly: MLAnomaly): string {
       break;
     case "runaway_function":
       parts.push(
-        `Cloud Function ${anomaly.resource_id} invocation spike — ${anomaly.latest_metrics.invocation_count} invocations`
+        `Cloud Function ${anomaly.resource_id} invocation spike — ${anomaly.latest_metrics.invocation_count?.toFixed(0)} invocations`
       );
       break;
     case "cost_spike":

@@ -32,7 +32,7 @@ interface Props {
 export function CostTrendChart({ data }: Props) {
   const resourceTypes = [...new Set(data.map((d) => d.resource_type))];
 
-  const grouped: Record<string, Record<string, number>> = {};
+  const grouped: Record<string, Record<string, any>> = {};
   for (const point of data) {
     const hour = new Date(point.hour).toLocaleTimeString([], {
       hour: "2-digit",

@@ -4,3 +4,4 @@ dist/
 *.log
 service-account-key.json
 *-key.json
+__pycache__/

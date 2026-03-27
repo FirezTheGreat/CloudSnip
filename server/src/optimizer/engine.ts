@@ -1,10 +1,7 @@
 import { config } from "../config";
 import { Anomaly } from "../models/Anomaly";
 import { Action } from "../models/Action";
-import { stopIdleVM } from "./actions/stop-idle-vm";
-import { capCloudFunction } from "./actions/cap-cloud-function";
-import { cleanupDisks } from "./actions/cleanup-disks";
-import { labelResources } from "./actions/label-resources";
+import { Resource } from "../models/Resource";
 import { broadcast } from "../websocket";
 
 interface AnomalyRecord {
@@ -16,18 +13,11 @@ interface AnomalyRecord {
   anomaly_score: number;
 }
 
-type ActionHandler = (anomaly: AnomalyRecord) => Promise<{
+type ActionResult = {
   success: boolean;
   costBefore: number;
   costAfter: number;
   details: Record<string, any>;
-}>;
-
-const ACTION_MAP: Record<string, { handler: ActionHandler; actionType: string }> = {
-  idle_instance: { handler: stopIdleVM, actionType: "stop_instance" },
-  runaway_function: { handler: capCloudFunction, actionType: "cap_instances" },
-  unused_volume: { handler: cleanupDisks, actionType: "delete_disk" },
-  untagged_resource: { handler: labelResources, actionType: "label_resource" },
 };
 
 export async function processAnomalies() {
@@ -50,38 +40,38 @@ export async function processAnomalies() {
   console.log(`[Optimizer] Processing ${anomalies.length} unresolved anomalies`);
 
   for (const anomaly of anomalies as AnomalyRecord[]) {
-    const mapping = ACTION_MAP[anomaly.anomaly_type];
-    if (!mapping) {
-      console.log(`[Optimizer] No action mapped for anomaly type: ${anomaly.anomaly_type}`);
+    const actionType = getActionType(anomaly.anomaly_type);
+    if (!actionType) {
+      console.log(`[Optimizer] No action mapped for: ${anomaly.anomaly_type}`);
       continue;
     }
 
     try {
       if (config.dryRun) {
-        console.log(`[Optimizer] DRY RUN — would execute ${mapping.actionType} on ${anomaly.resource_id}`);
-        await logAction(anomaly, mapping.actionType, true, 0, 0, { dry_run: true });
+        console.log(`[Optimizer] DRY RUN — would execute ${actionType} on ${anomaly.resource_id}`);
+        await logAction(anomaly, actionType, true, 0, 0, { dry_run: true });
         continue;
       }
 
-      console.log(`[Optimizer] Executing ${mapping.actionType} on ${anomaly.resource_id}...`);
+      console.log(`[Optimizer] Executing ${actionType} on ${anomaly.resource_id}...`);
 
-      const result = await mapping.handler(anomaly);
+      let result: ActionResult;
+
+      if (config.simulationMode) {
+        result = await simulateAction(anomaly, actionType);
+      } else {
+        result = await executeRealAction(anomaly, actionType);
+      }
+
       const savingsHourly = result.costBefore - result.costAfter;
       const savingsMonthly = savingsHourly * 730;
 
-      await logAction(
-        anomaly,
-        mapping.actionType,
-        result.success,
-        result.costBefore,
-        result.costAfter,
-        result.details
-      );
+      await logAction(anomaly, actionType, result.success, result.costBefore, result.costAfter, result.details);
 
       if (result.success) {
         await Anomaly.updateOne(
           { _id: anomaly._id },
-          { resolved: true, resolved_at: new Date(), resolved_by: mapping.actionType }
+          { resolved: true, resolved_at: new Date(), resolved_by: actionType }
         );
 
         broadcast({
@@ -89,7 +79,7 @@ export async function processAnomalies() {
           data: {
             anomalyId: anomaly._id,
             resourceId: anomaly.resource_id,
-            actionType: mapping.actionType,
+            actionType,
             savingsHourly,
             savingsMonthly,
             timestamp: new Date().toISOString(),
@@ -97,9 +87,115 @@ export async function processAnomalies() {
         });
       }
     } catch (err: any) {
-      console.error(`[Optimizer] Failed ${mapping.actionType} on ${anomaly.resource_id}:`, err.message);
-      await logAction(anomaly, mapping.actionType, false, 0, 0, { error: err.message });
+      console.error(`[Optimizer] Failed ${actionType} on ${anomaly.resource_id}:`, err.message);
+      await logAction(anomaly, actionType, false, 0, 0, { error: err.message });
     }
+  }
+}
+
+function getActionType(anomalyType: string): string | null {
+  const map: Record<string, string> = {
+    idle_instance: "stop_instance",
+    runaway_function: "cap_instances",
+    unused_volume: "delete_disk",
+    untagged_resource: "label_resource",
+  };
+  return map[anomalyType] || null;
+}
+
+async function simulateAction(anomaly: AnomalyRecord, actionType: string): Promise<ActionResult> {
+  const resource = await Resource.findOne({ resource_id: anomaly.resource_id }).lean();
+  const costBefore = resource?.hourly_cost || 0.0076;
+  const name = resource?.name || anomaly.resource_id;
+
+  await new Promise((r) => setTimeout(r, 300 + Math.random() * 500));
+
+  switch (actionType) {
+    case "stop_instance":
+      await Resource.updateOne(
+        { resource_id: anomaly.resource_id },
+        { status: "STOPPED", hourly_cost: 0 }
+      );
+      return {
+        success: true,
+        costBefore,
+        costAfter: 0,
+        details: {
+          instanceName: name,
+          machineType: resource?.metadata?.machineType || "e2-micro",
+          zone: resource?.metadata?.zone || "us-central1-a",
+          message: `Stopped idle VM ${name} (${resource?.metadata?.machineType || "unknown"})`,
+          simulatedAction: true,
+        },
+      };
+
+    case "cap_instances":
+      return {
+        success: true,
+        costBefore: 0,
+        costAfter: 0,
+        details: {
+          functionName: name,
+          maxInstancesSet: config.thresholds.maxFunctionInstances,
+          previousMaxInstances: resource?.metadata?.maxInstanceCount || "unlimited",
+          message: `Capped ${name} to max ${config.thresholds.maxFunctionInstances} instances`,
+          simulatedAction: true,
+        },
+      };
+
+    case "delete_disk":
+      await Resource.deleteOne({ resource_id: anomaly.resource_id });
+      return {
+        success: true,
+        costBefore,
+        costAfter: 0,
+        details: {
+          diskName: name,
+          sizeGB: resource?.metadata?.sizeGb || 10,
+          diskType: resource?.metadata?.diskType || "pd-standard",
+          message: `Deleted unattached disk ${name} (${resource?.metadata?.sizeGb || 10} GB)`,
+          simulatedAction: true,
+        },
+      };
+
+    case "label_resource":
+      return {
+        success: true,
+        costBefore: 0,
+        costAfter: 0,
+        details: {
+          resourceName: name,
+          labelsApplied: { "cost-intel": "needs-review" },
+          message: `Labeled ${name} with 'needs-review'`,
+          simulatedAction: true,
+        },
+      };
+
+    default:
+      return { success: false, costBefore: 0, costAfter: 0, details: { error: "Unknown action" } };
+  }
+}
+
+async function executeRealAction(anomaly: AnomalyRecord, actionType: string): Promise<ActionResult> {
+  switch (actionType) {
+    case "stop_instance": {
+      const { stopIdleVM } = await import("./actions/stop-idle-vm");
+      return stopIdleVM(anomaly);
+    }
+    case "cap_instances": {
+      const { capCloudFunction } = await import("./actions/cap-cloud-function");
+      return capCloudFunction(anomaly);
+    }
+    case "delete_disk": {
+      const { cleanupDisks } = await import("./actions/cleanup-disks");
+      return cleanupDisks(anomaly);
+    }
+    case "label_resource": {
+      const { labelResources } = await import("./actions/label-resources");
+      return labelResources(anomaly);
+    }
+    default:
+      return { success: false, costBefore: 0, costAfter: 0, details: { error: "Unknown action" } };
   }
 }
 

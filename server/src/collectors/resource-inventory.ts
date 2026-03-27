@@ -84,7 +84,7 @@ async function collectComputeInstances(): Promise<ResourceInfo[]> {
           selfLink: instance.selfLink,
           creationTimestamp: instance.creationTimestamp,
           labels: instance.labels,
-          networkInterfaces: instance.networkInterfaces?.map((ni) => ni.networkIP),
+          networkInterfaces: instance.networkInterfaces?.map((ni: any) => ni.networkIP),
         },
       });
     }

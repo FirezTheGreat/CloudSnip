@@ -1,11 +1,10 @@
 import dotenv from "dotenv";
-import { InstancesClient, DisksClient, ZoneOperationsClient } from "@google-cloud/compute";
-import { MetricServiceClient } from "@google-cloud/monitoring";
-import { CloudBillingClient } from "@google-cloud/billing";
-import { CloudFunctionsServiceClient } from "@google-cloud/functions";
-import { Storage } from "@google-cloud/storage";
 
 dotenv.config();
+
+const hasGcpCreds =
+  !!process.env.GCP_PROJECT_ID &&
+  !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 export const config = {
   gcp: {
@@ -33,14 +32,31 @@ export const config = {
     wsPort: Number(process.env.WS_PORT) || 4001,
   },
   dryRun: process.env.DRY_RUN === "true",
+  simulationMode: process.env.SIMULATION_MODE === "true" || !hasGcpCreds,
   cronSchedule: process.env.CRON_SCHEDULE || "*/5 * * * *",
 };
 
-// GCP clients authenticate via GOOGLE_APPLICATION_CREDENTIALS env var (service account JSON key)
-export const computeInstances = new InstancesClient();
-export const computeDisks = new DisksClient();
-export const computeZoneOps = new ZoneOperationsClient();
-export const monitoring = new MetricServiceClient();
-export const billing = new CloudBillingClient();
-export const functionsClient = new CloudFunctionsServiceClient();
-export const storage = new Storage();
+// Only initialize GCP clients when we have real credentials
+export let computeInstances: any = null;
+export let computeDisks: any = null;
+export let computeZoneOps: any = null;
+export let monitoring: any = null;
+export let billing: any = null;
+export let functionsClient: any = null;
+export let storage: any = null;
+
+if (hasGcpCreds) {
+  const compute = require("@google-cloud/compute");
+  const mon = require("@google-cloud/monitoring");
+  const bill = require("@google-cloud/billing");
+  const fns = require("@google-cloud/functions");
+  const gcs = require("@google-cloud/storage");
+
+  computeInstances = new compute.InstancesClient();
+  computeDisks = new compute.DisksClient();
+  computeZoneOps = new compute.ZoneOperationsClient();
+  monitoring = new mon.MetricServiceClient();
+  billing = new bill.CloudBillingClient();
+  functionsClient = new fns.CloudFunctionsServiceClient();
+  storage = new gcs.Storage();
+}
