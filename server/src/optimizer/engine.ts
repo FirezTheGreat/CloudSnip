@@ -1,5 +1,6 @@
-import { query } from "../db";
 import { config } from "../config";
+import { Anomaly } from "../models/Anomaly";
+import { Action } from "../models/Action";
 import { stopIdleVM } from "./actions/stop-idle-vm";
 import { capCloudFunction } from "./actions/cap-cloud-function";
 import { cleanupDisks } from "./actions/cleanup-disks";
@@ -7,7 +8,7 @@ import { labelResources } from "./actions/label-resources";
 import { broadcast } from "../websocket";
 
 interface AnomalyRecord {
-  id: string;
+  _id: any;
   resource_id: string;
   resource_type: string;
   anomaly_type: string;
@@ -30,28 +31,25 @@ const ACTION_MAP: Record<string, { handler: ActionHandler; actionType: string }>
 };
 
 export async function processAnomalies() {
-  const result = await query(`
-    SELECT id, resource_id, resource_type, anomaly_type, severity, anomaly_score
-    FROM anomalies
-    WHERE resolved = FALSE
-    ORDER BY
-      CASE severity
-        WHEN 'critical' THEN 1
-        WHEN 'high' THEN 2
-        WHEN 'medium' THEN 3
-        WHEN 'low' THEN 4
-      END,
-      anomaly_score DESC
-  `);
+  const severityOrder = { critical: 1, high: 2, medium: 3, low: 4 };
+  const anomalies = await Anomaly.find({ resolved: false })
+    .sort({ anomaly_score: -1 })
+    .lean();
 
-  if (result.rows.length === 0) {
+  anomalies.sort(
+    (a, b) =>
+      (severityOrder[a.severity as keyof typeof severityOrder] || 4) -
+      (severityOrder[b.severity as keyof typeof severityOrder] || 4)
+  );
+
+  if (anomalies.length === 0) {
     console.log("[Optimizer] No unresolved anomalies");
     return;
   }
 
-  console.log(`[Optimizer] Processing ${result.rows.length} unresolved anomalies`);
+  console.log(`[Optimizer] Processing ${anomalies.length} unresolved anomalies`);
 
-  for (const anomaly of result.rows as AnomalyRecord[]) {
+  for (const anomaly of anomalies as AnomalyRecord[]) {
     const mapping = ACTION_MAP[anomaly.anomaly_type];
     if (!mapping) {
       console.log(`[Optimizer] No action mapped for anomaly type: ${anomaly.anomaly_type}`);
@@ -81,15 +79,15 @@ export async function processAnomalies() {
       );
 
       if (result.success) {
-        await query(
-          `UPDATE anomalies SET resolved = TRUE, resolved_at = NOW(), resolved_by = $1 WHERE id = $2`,
-          [mapping.actionType, anomaly.id]
+        await Anomaly.updateOne(
+          { _id: anomaly._id },
+          { resolved: true, resolved_at: new Date(), resolved_by: mapping.actionType }
         );
 
         broadcast({
           type: "action_completed",
           data: {
-            anomalyId: anomaly.id,
+            anomalyId: anomaly._id,
             resourceId: anomaly.resource_id,
             actionType: mapping.actionType,
             savingsHourly,
@@ -116,24 +114,17 @@ async function logAction(
   const savingsHourly = costBefore - costAfter;
   const savingsMonthly = savingsHourly * 730;
 
-  await query(
-    `INSERT INTO actions
-     (anomaly_id, resource_id, resource_type, action_type, status,
-      cost_before_hourly, cost_after_hourly, savings_hourly, savings_monthly_projected,
-      details, dry_run)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-    [
-      anomaly.id,
-      anomaly.resource_id,
-      anomaly.resource_type,
-      actionType,
-      success ? "success" : "failed",
-      costBefore,
-      costAfter,
-      savingsHourly,
-      savingsMonthly,
-      JSON.stringify(details),
-      config.dryRun,
-    ]
-  );
+  await Action.create({
+    anomaly_id: anomaly._id,
+    resource_id: anomaly.resource_id,
+    resource_type: anomaly.resource_type,
+    action_type: actionType,
+    status: success ? "success" : "failed",
+    cost_before_hourly: costBefore,
+    cost_after_hourly: costAfter,
+    savings_hourly: savingsHourly,
+    savings_monthly_projected: savingsMonthly,
+    details,
+    dry_run: config.dryRun,
+  });
 }

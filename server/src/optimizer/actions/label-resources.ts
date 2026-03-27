@@ -1,17 +1,13 @@
 import { computeInstances, computeDisks, config } from "../../config";
-import { query } from "../../db";
+import { Resource } from "../../models/Resource";
 
 export async function labelResources(anomaly: {
   resource_id: string;
   resource_type: string;
 }) {
-  const resourceResult = await query(
-    `SELECT name, metadata FROM resources WHERE resource_id = $1`,
-    [anomaly.resource_id]
-  );
-
-  const metadata = resourceResult.rows[0]?.metadata || {};
-  const name = resourceResult.rows[0]?.name || "";
+  const resource = await Resource.findOne({ resource_id: anomaly.resource_id }).lean();
+  const metadata = resource?.metadata || {};
+  const name = resource?.name || "";
   const zone = metadata.zone || config.gcp.zone.split("/").pop();
 
   const labels: Record<string, string> = {
@@ -22,7 +18,6 @@ export async function labelResources(anomaly: {
   };
 
   if (anomaly.resource_type === "compute") {
-    // For compute instances, we need the current fingerprint
     const [instance] = await computeInstances.get({
       project: config.gcp.projectId,
       zone,

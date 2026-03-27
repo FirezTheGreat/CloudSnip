@@ -6,7 +6,7 @@ This system has **four** independently running processes that communicate via HT
 
 ---
 
-## Component 1: Express Backend (TypeScript)
+## Component 1: Express Server (TypeScript)
 
 **What it does:** Orchestrates everything. Collects telemetry, calls the ML service, decides on actions, exposes REST API, pushes WebSocket events.
 
@@ -22,7 +22,14 @@ This system has **four** independently running processes that communicate via HT
 src/
 ├── index.ts              ← Express + WS server startup
 ├── config.ts             ← All env vars + GCP client initialization
-├── db.ts                 ← pg Pool connection to TimescaleDB
+├── db.ts                 ← Mongoose connection to MongoDB
+│
+├── models/               ← Mongoose schemas
+│   ├── Metric.ts         ← Time-series telemetry data
+│   ├── Anomaly.ts        ← Detected anomalies
+│   ├── Action.ts         ← Optimization audit trail
+│   ├── CostSummary.ts    ← Daily cost rollups
+│   └── Resource.ts       ← GCP resource inventory
 │
 ├── collectors/           ← PULL data from GCP
 │   ├── cloud-monitoring.ts   ← Cloud Monitoring: CPU, network, function invocations
@@ -48,7 +55,8 @@ src/
 │   ├── actions.ts        ← GET /api/actions — audit trail
 │   └── dashboard.ts      ← GET /api/dashboard/summary — aggregate stats
 │
-└── websocket.ts          ← Broadcast anomalies + actions to connected clients
+├── websocket.ts          ← Broadcast anomalies + actions to connected clients
+└── seed.ts               ← Test data seeder for demo
 ```
 
 ### Key design decisions:
@@ -81,7 +89,7 @@ export const storage = new Storage();
 
 **Why it's separate:**
 - scikit-learn is Python-only, no good JS alternative
-- If the ML service crashes, your backend keeps working
+- If the ML service crashes, your server keeps working
 - Clean microservice boundary — your Node app doesn't care HOW anomalies are detected
 - Judges see "microservice architecture" in your diagram
 
@@ -135,33 +143,46 @@ Response:
 
 ---
 
-## Component 3: TimescaleDB
+## Component 3: MongoDB
 
-**What it does:** Stores all time-series metrics, anomalies, and actions with PostgreSQL's full SQL power plus time-series superpowers.
+**What it does:** Stores all telemetry metrics, anomalies, actions, and resource inventory.
 
-**Why not regular Postgres:**
-TimescaleDB adds one critical function: `time_bucket()`. This lets you aggregate metrics into arbitrary time windows in a single query:
+**Why MongoDB:**
+- **No migrations** — define schemas in code with Mongoose, collections are created automatically
+- **Schema flexibility** — metric snapshots and resource metadata are natural JSON objects, not JSONB columns
+- **Fast writes** — the telemetry pipeline is insert-heavy, MongoDB handles this natively
+- **Aggregation pipeline** — `$group`, `$match`, `$sort`, `$dateTrunc` give you time-bucketed queries
+- **You know it** — zero learning curve
 
-```sql
--- Average CPU per hour for the last 24 hours
-SELECT
-  time_bucket('1 hour', time) AS bucket,
-  resource_id,
-  AVG(value) as avg_cpu
-FROM metrics
-WHERE metric_name = 'cpuutilization'
-  AND time > NOW() - INTERVAL '24 hours'
-GROUP BY bucket, resource_id
-ORDER BY bucket;
+**Time bucketing in MongoDB** (equivalent of what you'd get from TimescaleDB's `time_bucket()`):
+
+```typescript
+const data = await Metric.aggregate([
+  { $match: { time: { $gt: twentyFourHoursAgo } } },
+  {
+    $group: {
+      _id: {
+        hour: { $dateTrunc: { date: "$time", unit: "hour" } },
+        resource_type: "$resource_type",
+      },
+      avg_value: { $avg: "$value" },
+    },
+  },
+  { $sort: { "_id.hour": 1 } },
+]);
 ```
 
-Without TimescaleDB, you'd need to write the bucketing logic in application code. With it, one SQL query gives your dashboard exactly what it needs.
+**Joining anomalies with actions** (equivalent of SQL JOIN):
 
-**Hypertables:** The `metrics` and `cost_summaries` tables are "hypertables" — TimescaleDB automatically partitions them by time. This means queries like "last 2 hours" are fast regardless of how much total data you have.
+```typescript
+const anomalies = await Anomaly.find({ resolved: false }).lean();
+const anomalyIds = anomalies.map(a => a._id);
+const actions = await Action.find({ anomaly_id: { $in: anomalyIds } }).lean();
+```
 
 ---
 
-## Component 4: React Dashboard
+## Component 4: React Client
 
 **What it does:** Three-panel real-time dashboard showing cost trends, live anomaly detection, and savings tracking.
 
@@ -203,19 +224,13 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
 - Anomaly feed: WebSocket push (you want instant appearance)
 - Savings tracker: REST polling every 30 seconds
 
-**Why Recharts:**
-- React-native, component-based API
-- `<LineChart>`, `<BarChart>` — literally what the components are called
-- Responsive by default, good-looking defaults
-- You won't spend time fighting chart configuration
-
 ---
 
 ## Data Flow Sequence
 
 ```
 ┌─────────┐     ┌─────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│  GCP   │     │ Backend │     │TimescaleDB│    │ML Service│     │Dashboard │
+│  GCP    │     │ Server  │     │ MongoDB  │     │ML Service│     │  Client  │
 │ Cloud   │     │ (Node)  │     │          │     │ (Python) │     │ (React)  │
 └────┬────┘     └────┬────┘     └─────┬────┘     └────┬─────┘     └────┬─────┘
      │               │               │               │               │
@@ -229,7 +244,7 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
      │  CPU=2.3%     │               │               │               │
      │◄──────────────│               │               │               │
      │               │               │               │               │
-     │               │ INSERT metric │               │               │
+     │               │ Metric.create │               │               │
      │               │──────────────►│               │               │
      │               │               │               │               │
      │               │ POST /detect  │               │               │
@@ -240,7 +255,7 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
      │               │ = 0.89        │               │               │
      │               │◄──────────────────────────────│               │
      │               │               │               │               │
-     │               │ INSERT anomaly│               │               │
+     │               │ Anomaly.create│               │               │
      │               │──────────────►│               │               │
      │               │               │               │               │
      │               │ score > 0.7   │               │               │
@@ -252,7 +267,7 @@ Without TimescaleDB, you'd need to write the bucketing logic in application code
      │  OK           │               │               │               │
      │──────────────►│               │               │               │
      │               │               │               │               │
-     │               │ INSERT action │               │               │
+     │               │ Action.create │               │               │
      │               │ (before/after)│               │               │
      │               │──────────────►│               │               │
      │               │               │               │               │
@@ -280,4 +295,4 @@ Every GCP API call should be wrapped in try/catch. The system must keep running 
 1. **Least privilege roles:** The service account has exactly the roles needed, nothing more
 2. **No credentials in code:** Key file path in `.env`, which is `.gitignore`d. Never commit `service-account-key.json`.
 3. **Dry-run mode:** Add a `DRY_RUN=true` env var that logs what it WOULD do without actually calling stop/delete
-4. **Action confirmation:** For the demo, you might want a "manual approval" mode where the dashboard shows a "Confirm" button instead of auto-executing
+4. **Action confirmation:** For the demo, you might want a "manual approval" mode where the client shows a "Confirm" button instead of auto-executing

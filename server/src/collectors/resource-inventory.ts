@@ -1,11 +1,11 @@
 import { computeInstances, computeDisks, functionsClient, storage, config } from "../config";
-import { query } from "../db";
+import { Resource } from "../models/Resource";
 import { getHourlyCost } from "./cloud-billing";
 
 const DISK_HOURLY_PER_GB: Record<string, number> = {
-  "pd-standard": 0.04 / 730,   // $0.04/GB/month
-  "pd-ssd": 0.17 / 730,        // $0.17/GB/month
-  "pd-balanced": 0.10 / 730,   // $0.10/GB/month
+  "pd-standard": 0.04 / 730,
+  "pd-ssd": 0.17 / 730,
+  "pd-balanced": 0.10 / 730,
 };
 
 export interface ResourceInfo {
@@ -34,12 +34,23 @@ export async function collectResourceInventory(): Promise<ResourceInfo[]> {
   if (storageResult.status === "fulfilled") resources.push(...storageResult.value);
 
   for (const r of resources) {
-    await query(
-      `INSERT INTO resources (resource_id, resource_type, name, status, hourly_cost, last_seen, metadata)
-       VALUES ($1, $2, $3, $4, $5, NOW(), $6)
-       ON CONFLICT (resource_id)
-       DO UPDATE SET status = $4, hourly_cost = $5, last_seen = NOW(), metadata = $6`,
-      [r.resourceId, r.resourceType, r.name, r.status, r.hourlyCost, JSON.stringify(r.metadata)]
+    await Resource.updateOne(
+      { resource_id: r.resourceId },
+      {
+        $set: {
+          resource_type: r.resourceType,
+          name: r.name,
+          status: r.status,
+          hourly_cost: r.hourlyCost,
+          last_seen: new Date(),
+          metadata: r.metadata,
+        },
+        $setOnInsert: {
+          resource_id: r.resourceId,
+          first_seen: new Date(),
+        },
+      },
+      { upsert: true }
     );
   }
 
@@ -91,14 +102,13 @@ async function collectCloudFunctions(): Promise<ResourceInfo[]> {
 
     for (const fn of functions || []) {
       const name = (fn.name || "").split("/").pop() || "";
-      const status = fn.status ? String(fn.status) : "ACTIVE";
 
       results.push({
         resourceId: name,
         resourceType: "cloud_function",
         name,
         status: "active",
-        hourlyCost: 0, // Cloud Functions are pay-per-invocation
+        hourlyCost: 0,
         metadata: {
           runtime: fn.buildConfig?.runtime,
           entryPoint: fn.buildConfig?.entryPoint,
@@ -168,7 +178,7 @@ async function collectStorageBuckets(): Promise<ResourceInfo[]> {
         resourceType: "gcs",
         name: bucket.name || "",
         status: "active",
-        hourlyCost: 0, // GCS cost depends on storage used + operations
+        hourlyCost: 0,
         metadata: {
           location: bucket.metadata?.location,
           storageClass: bucket.metadata?.storageClass,

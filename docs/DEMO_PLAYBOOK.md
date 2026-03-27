@@ -8,7 +8,7 @@ Your demo needs to tell a story. Not "here's what the system does" but "watch it
 
 ## Pre-Demo Setup (30 min before)
 
-1. Start all services: `docker-compose up -d && npm run dev` (backend + ML + dashboard)
+1. Start all services: `docker-compose up -d && cd server && npm run dev` (server + ML + client)
 2. Verify data is flowing: check the dashboard shows cost trends
 3. Prepare your three anomaly triggers (don't fire them yet)
 4. Have the GCP Console open in another tab (side-by-side proof)
@@ -105,10 +105,10 @@ echo "Done — 100 invocations sent"
 
 If GCP APIs are slow or metrics haven't propagated:
 
-1. Use seed data (see DATABASE_SCHEMA.md) to pre-populate metrics
+1. Run `cd server && npm run db:seed` to populate test data
 2. The ML service will still detect anomalies in seed data
 3. Have screenshots/recordings from a successful run ready
-4. The dashboard works with seed data — it just queries the DB
+4. The client works with seed data — it just queries MongoDB
 
 ---
 

@@ -1,5 +1,5 @@
 import { functionsClient, config } from "../../config";
-import { query } from "../../db";
+import { Resource } from "../../models/Resource";
 
 export async function capCloudFunction(anomaly: {
   resource_id: string;
@@ -7,11 +7,8 @@ export async function capCloudFunction(anomaly: {
 }) {
   const maxInstances = config.thresholds.maxFunctionInstances;
 
-  const resourceResult = await query(
-    `SELECT metadata FROM resources WHERE resource_id = $1`,
-    [anomaly.resource_id]
-  );
-  const metadata = resourceResult.rows[0]?.metadata || {};
+  const resource = await Resource.findOne({ resource_id: anomaly.resource_id }).lean();
+  const metadata = resource?.metadata || {};
   const fullName = metadata.fullName ||
     `projects/${config.gcp.projectId}/locations/${config.gcp.region}/functions/${anomaly.resource_id}`;
 

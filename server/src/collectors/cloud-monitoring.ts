@@ -1,5 +1,5 @@
 import { monitoring, config } from "../config";
-import { query } from "../db";
+import { Metric } from "../models/Metric";
 
 const projectPath = () => `projects/${config.gcp.projectId}`;
 
@@ -29,7 +29,7 @@ export async function collectComputeMetrics(instanceIds: string[]) {
       },
       aggregation: {
         alignmentPeriod: { seconds: 300 },
-        perSeriesAligner: 1, // ALIGN_MEAN
+        perSeriesAligner: 1,
       },
     };
 
@@ -42,11 +42,14 @@ export async function collectComputeMetrics(instanceIds: string[]) {
           const value = (point.value?.doubleValue ?? point.value?.int64Value ?? 0) as number;
           const timestamp = new Date(Number(point.interval?.endTime?.seconds || 0) * 1000);
 
-          await query(
-            `INSERT INTO metrics (time, resource_id, resource_type, metric_name, value, unit)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [timestamp, instanceId, "compute", metric.name, value * metric.scale, metric.unit]
-          );
+          await Metric.create({
+            time: timestamp,
+            resource_id: instanceId,
+            resource_type: "compute",
+            metric_name: metric.name,
+            value: value * metric.scale,
+            unit: metric.unit,
+          });
 
           results.push({
             resourceId: instanceId,
@@ -76,7 +79,7 @@ export async function collectFunctionMetrics(functionNames: string[]) {
 
   const metricTypes = [
     { type: "cloudfunctions.googleapis.com/function/execution_count", name: "invocations", unit: "Count", scale: 1 },
-    { type: "cloudfunctions.googleapis.com/function/execution_times", name: "duration", unit: "Nanoseconds", scale: 0.000001 }, // ns to ms
+    { type: "cloudfunctions.googleapis.com/function/execution_times", name: "duration", unit: "Nanoseconds", scale: 0.000001 },
     { type: "cloudfunctions.googleapis.com/function/user_memory_bytes", name: "memory_usage", unit: "Bytes", scale: 1 },
   ];
 
@@ -92,7 +95,7 @@ export async function collectFunctionMetrics(functionNames: string[]) {
       },
       aggregation: {
         alignmentPeriod: { seconds: 300 },
-        perSeriesAligner: metric.name === "invocations" ? 3 : 1, // ALIGN_SUM for counts, ALIGN_MEAN otherwise
+        perSeriesAligner: metric.name === "invocations" ? 3 : 1,
       },
     };
 
@@ -106,11 +109,14 @@ export async function collectFunctionMetrics(functionNames: string[]) {
           const value = rawValue * metric.scale;
           const timestamp = new Date(Number(point.interval?.endTime?.seconds || 0) * 1000);
 
-          await query(
-            `INSERT INTO metrics (time, resource_id, resource_type, metric_name, value, unit)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [timestamp, functionName, "cloud_function", metric.name, value, metric.unit]
-          );
+          await Metric.create({
+            time: timestamp,
+            resource_id: functionName,
+            resource_type: "cloud_function",
+            metric_name: metric.name,
+            value,
+            unit: metric.unit,
+          });
 
           results.push({
             resourceId: functionName,

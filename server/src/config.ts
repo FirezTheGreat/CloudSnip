@@ -16,7 +16,7 @@ export const config = {
     billingAccountId: process.env.GCP_BILLING_ACCOUNT_ID || "",
   },
   db: {
-    url: process.env.DATABASE_URL || "postgresql://costintel:password@localhost:5432/costintel",
+    url: process.env.MONGODB_URI || "mongodb://localhost:27017/costintel",
   },
   ml: {
     url: process.env.ML_SERVICE_URL || "http://localhost:5001",

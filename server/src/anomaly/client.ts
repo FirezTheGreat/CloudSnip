@@ -1,5 +1,7 @@
 import { config } from "../config";
-import { query } from "../db";
+import { Metric } from "../models/Metric";
+import { Anomaly } from "../models/Anomaly";
+import { Resource } from "../models/Resource";
 
 interface MLAnomaly {
   resource_id: string;
@@ -23,38 +25,51 @@ const SEVERITY_MAP: Record<string, (score: number) => string> = {
 };
 
 export async function detectAnomalies(): Promise<MLAnomaly[]> {
-  const metricsResult = await query(`
-    SELECT
-      resource_id,
-      MAX(CASE WHEN metric_name = 'cpuutilization' THEN value ELSE 0 END) AS cpu_utilization,
-      MAX(CASE WHEN metric_name = 'invocations' THEN value ELSE 0 END) AS invocation_count,
-      MAX(CASE WHEN metric_name = 'networkin' THEN value ELSE 0 END) AS network_in,
-      MAX(CASE WHEN metric_name = 'networkout' THEN value ELSE 0 END) AS network_out,
-      COALESCE(
-        (SELECT hourly_cost FROM resources WHERE resources.resource_id = metrics.resource_id LIMIT 1),
-        0
-      ) AS estimated_hourly_cost,
-      time AS timestamp
-    FROM metrics
-    WHERE time > NOW() - INTERVAL '2 hours'
-    GROUP BY resource_id, time
-    ORDER BY resource_id, time
-  `);
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
-  if (metricsResult.rows.length < 10) {
-    console.log(`[Anomaly] Not enough data points (${metricsResult.rows.length}) — need at least 10`);
+  const metricsRaw = await Metric.aggregate([
+    { $match: { time: { $gt: twoHoursAgo } } },
+    { $sort: { resource_id: 1, time: 1 } },
+    {
+      $group: {
+        _id: { resource_id: "$resource_id", time: "$time" },
+        cpu_utilization: {
+          $max: { $cond: [{ $eq: ["$metric_name", "cpuutilization"] }, "$value", 0] },
+        },
+        invocation_count: {
+          $max: { $cond: [{ $eq: ["$metric_name", "invocations"] }, "$value", 0] },
+        },
+        network_in: {
+          $max: { $cond: [{ $eq: ["$metric_name", "networkin"] }, "$value", 0] },
+        },
+        network_out: {
+          $max: { $cond: [{ $eq: ["$metric_name", "networkout"] }, "$value", 0] },
+        },
+      },
+    },
+  ]);
+
+  if (metricsRaw.length < 10) {
+    console.log(`[Anomaly] Not enough data points (${metricsRaw.length}) — need at least 10`);
     return [];
   }
 
+  const resourceIds = [...new Set(metricsRaw.map((m) => m._id.resource_id))];
+  const resourceCosts = await Resource.find(
+    { resource_id: { $in: resourceIds } },
+    { resource_id: 1, hourly_cost: 1 }
+  ).lean();
+  const costMap = new Map(resourceCosts.map((r) => [r.resource_id, r.hourly_cost || 0]));
+
   const payload = {
-    metrics: metricsResult.rows.map((row) => ({
-      resource_id: row.resource_id,
-      timestamp: row.timestamp,
-      cpu_utilization: parseFloat(row.cpu_utilization) || 0,
-      invocation_count: parseFloat(row.invocation_count) || 0,
-      network_in: parseFloat(row.network_in) || 0,
-      network_out: parseFloat(row.network_out) || 0,
-      estimated_hourly_cost: parseFloat(row.estimated_hourly_cost) || 0,
+    metrics: metricsRaw.map((row) => ({
+      resource_id: row._id.resource_id,
+      timestamp: row._id.time,
+      cpu_utilization: row.cpu_utilization || 0,
+      invocation_count: row.invocation_count || 0,
+      network_in: row.network_in || 0,
+      network_out: row.network_out || 0,
+      estimated_hourly_cost: costMap.get(row._id.resource_id) || 0,
     })),
   };
 
@@ -80,28 +95,22 @@ export async function detectAnomalies(): Promise<MLAnomaly[]> {
 
       const severityFn = SEVERITY_MAP[anomaly.anomaly_type] || SEVERITY_MAP.usage_anomaly;
       const severity = severityFn(anomaly.anomaly_score);
-
       const description = buildDescription(anomaly);
 
-      const resourceTypeResult = await query(
-        `SELECT resource_type FROM resources WHERE resource_id = $1 LIMIT 1`,
-        [anomaly.resource_id]
-      );
-      const resourceType = resourceTypeResult.rows[0]?.resource_type || "unknown";
+      const resource = await Resource.findOne(
+        { resource_id: anomaly.resource_id },
+        { resource_type: 1 }
+      ).lean();
 
-      await query(
-        `INSERT INTO anomalies (resource_id, resource_type, anomaly_type, severity, anomaly_score, metric_snapshot, description)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          anomaly.resource_id,
-          resourceType,
-          anomaly.anomaly_type,
-          severity,
-          anomaly.anomaly_score,
-          JSON.stringify(anomaly.latest_metrics),
-          description,
-        ]
-      );
+      await Anomaly.create({
+        resource_id: anomaly.resource_id,
+        resource_type: resource?.resource_type || "unknown",
+        anomaly_type: anomaly.anomaly_type,
+        severity,
+        anomaly_score: anomaly.anomaly_score,
+        metric_snapshot: anomaly.latest_metrics,
+        description,
+      });
 
       confirmedAnomalies.push(anomaly);
     }

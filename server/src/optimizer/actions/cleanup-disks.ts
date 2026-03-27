@@ -1,18 +1,14 @@
 import { computeDisks, config } from "../../config";
-import { query } from "../../db";
+import { Resource } from "../../models/Resource";
 
 export async function cleanupDisks(anomaly: {
   resource_id: string;
   resource_type: string;
 }) {
-  const resourceResult = await query(
-    `SELECT name, hourly_cost, metadata FROM resources WHERE resource_id = $1`,
-    [anomaly.resource_id]
-  );
-
-  const costBefore = resourceResult.rows[0]?.hourly_cost || 0;
-  const metadata = resourceResult.rows[0]?.metadata || {};
-  const diskName = resourceResult.rows[0]?.name || metadata.name;
+  const resource = await Resource.findOne({ resource_id: anomaly.resource_id }).lean();
+  const costBefore = resource?.hourly_cost || 0;
+  const metadata = resource?.metadata || {};
+  const diskName = resource?.name || metadata.name;
   const zone = metadata.zone || config.gcp.zone.split("/").pop();
 
   const [operation] = await computeDisks.delete({
@@ -21,7 +17,7 @@ export async function cleanupDisks(anomaly: {
     disk: diskName,
   });
 
-  await query(`DELETE FROM resources WHERE resource_id = $1`, [anomaly.resource_id]);
+  await Resource.deleteOne({ resource_id: anomaly.resource_id });
 
   const sizeGB = metadata.sizeGb || 10;
   const diskType = metadata.diskType || "pd-standard";
