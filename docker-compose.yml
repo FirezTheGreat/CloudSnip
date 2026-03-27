@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: costintel-db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+  ml-service:
+    build: ./ml-service
+    container_name: costintel-ml
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
