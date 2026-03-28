@@ -13,6 +13,7 @@ import budgetRoutes from "./routes/budgets";
 import recommendationRoutes from "./routes/recommendations";
 import simulationRoutes from "./routes/simulation";
 import whatIfRoutes from "./routes/what-if";
+import analyticsRoutes from "./routes/analytics";
 import { complianceRouter } from "./routes/compliance";
 
 const app = express();
@@ -37,6 +38,7 @@ app.use("/api/budgets", budgetRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 app.use("/api/simulation", simulationRoutes);
 app.use("/api/costs/what-if", whatIfRoutes);
+app.use("/api/analytics", analyticsRoutes);
 app.use("/api/dashboard", complianceRouter);
 
 const httpServer = createServer(app);

@@ -1,6 +1,21 @@
 import { computeInstances, config } from "../../config";
 import { Resource } from "../../models/Resource";
 
+/**
+ * Detect whether a resource is a real GCP resource or demo/seed data.
+ * Real GCP compute instance IDs are purely numeric (e.g. "1234567890123").
+ * Our seed IDs use AWS-style prefixes (e.g. "i-0a1b2c3d...") or contain "synthetic".
+ */
+function isDemoResource(resourceId: string): boolean {
+  if (!config.gcp.projectId?.trim()) return true;  // No GCP project configured
+  if (resourceId.startsWith("i-")) return true;
+  if (resourceId.startsWith("synthetic")) return true;
+  if (resourceId.startsWith("vol-")) return true;
+  if (resourceId.startsWith("fn-")) return true;
+  if (resourceId.startsWith("s3-")) return true;
+  return false;
+}
+
 /** Resolve zone + canonical name — DB zone/name can be wrong; API 404s if either mismatches. */
 async function locateComputeVm(
   projectId: string,
@@ -42,6 +57,29 @@ export async function stopIdleVM(anomaly: {
   const metadata = resource?.metadata || {};
   const hintName = resource?.name || metadata.name;
 
+  // ─── Demo Mode: simulate success locally ─────────────────────────
+  if (isDemoResource(anomaly.resource_id)) {
+    await Resource.updateOne(
+      { resource_id: anomaly.resource_id },
+      { status: "STOPPED", hourly_cost: 0, last_seen: new Date() }
+    );
+
+    return {
+      success: true,
+      costBefore,
+      costAfter: 0,
+      details: {
+        instanceId: anomaly.resource_id,
+        instanceName: hintName || anomaly.resource_id,
+        machineType: resource?.instanceType || metadata.machineType || "unknown",
+        zone: resource?.region || metadata.zone || "us-east-1a",
+        message: `Stopped idle VM ${hintName || anomaly.resource_id} (${resource?.instanceType || metadata.machineType || "unknown"}) — saving $${(costBefore * 730).toFixed(2)}/mo`,
+        mode: "demo",
+      },
+    };
+  }
+
+  // ─── Live Mode: call real GCP API ─────────────────────────────────
   const located = await locateComputeVm(config.gcp.projectId, anomaly.resource_id, hintName);
 
   if (!located) {
@@ -50,7 +88,7 @@ export async function stopIdleVM(anomaly: {
       costBefore,
       costAfter: costBefore,
       details: {
-        message: `No VM in project ${config.gcp.projectId} matched id=${anomaly.resource_id} or name=${hintName || "?"}. It may have been deleted, never existed (e.g. seed data in a live project), or belongs to another project.`,
+        message: `No VM in project ${config.gcp.projectId} matched id=${anomaly.resource_id} or name=${hintName || "?"}. It may have been deleted or belongs to another project.`,
         resource_id: anomaly.resource_id,
         hintName: hintName || null,
       },

@@ -75,13 +75,13 @@ export function PipelineHealthIndicator() {
   }
 
   return (
-    <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-surface-raised border border-border text-[10px]">
+    <div className="flex flex-wrap items-center gap-y-1 gap-x-2 px-3 py-2 rounded-lg bg-surface-raised border border-border text-[10px]">
       {/* ML service health */}
       <div className="flex items-center gap-1">
         <span
           className={`w-1.5 h-1.5 rounded-full ${status.mlOnline ? "bg-emerald-400 animate-pulse" : "bg-red-500"}`}
         />
-        <span className={status.mlOnline ? "text-emerald-500" : "text-red-600"}>
+        <span className={status.mlOnline ? "text-emerald-500" : "text-red-700"}>
           ML {status.mlOnline ? "online" : "offline"}
         </span>
       </div>
@@ -89,7 +89,7 @@ export function PipelineHealthIndicator() {
       <span className="text-slate-700">|</span>
 
       {/* Last run */}
-      <div className="flex items-center gap-1 text-slate-500">
+      <div className="flex items-center gap-1 text-slate-600">
         <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
@@ -99,7 +99,7 @@ export function PipelineHealthIndicator() {
       <span className="text-slate-700">|</span>
 
       {/* Next run */}
-      <span className="text-slate-500">
+      <span className="text-slate-600">
         Next: <span className="text-slate-600 font-medium">{humanCountdown(nextIn)}</span>
       </span>
 

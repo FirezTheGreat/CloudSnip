@@ -7,9 +7,15 @@ const router = Router();
 router.get("/", async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const resolved = req.query.resolved === "true";
+    const resolvedParam = req.query.resolved;
 
-    const anomalies = await Anomaly.find({ resolved })
+    // If no filter specified, return BOTH open + resolved anomalies
+    const filter: Record<string, any> = {};
+    if (resolvedParam === "true") filter.resolved = true;
+    else if (resolvedParam === "false") filter.resolved = false;
+    // else: no filter → return all
+
+    const anomalies = await Anomaly.find(filter)
       .sort({ detected_at: -1 })
       .limit(limit)
       .lean();

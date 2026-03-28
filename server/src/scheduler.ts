@@ -8,6 +8,7 @@ import { processAnomalies } from "./optimizer/engine";
 import { checkBudgets } from "./budget-checker";
 import { broadcast } from "./socket-io";
 import { runAutoSimulation } from "./simulation/anomaly-simulator";
+import { runIntelligencePipeline } from "./intelligence/runner";
 
 let isRunning = false;
 
@@ -64,8 +65,15 @@ async function runPipeline() {
     console.log("[Scheduler] Step 5/6: Processing anomalies...");
     await processAnomalies();
 
-    console.log("[Scheduler] Step 6/6: Checking budgets...");
+    console.log("[Scheduler] Step 6/7: Checking budgets...");
     await checkBudgets();
+
+    console.log("[Scheduler] Step 7/7: Running cost intelligence...");
+    try {
+      await runIntelligencePipeline();
+    } catch (intellErr: any) {
+      console.error("[Scheduler] Intelligence pipeline error (non-fatal):", intellErr.message);
+    }
 
     const duration = Date.now() - startTime;
     const durationSec = (duration / 1000).toFixed(1);
@@ -130,7 +138,7 @@ export function startScheduler() {
   });
 
   // Anomaly simulation cron — default every 20 min, configurable via env
-  const simSchedule = process.env.SIM_CRON_SCHEDULE || "*/20 * * * *";
+  const simSchedule = process.env.SIM_CRON_SCHEDULE || "*/8 * * * *";
   console.log(`[SimCron] Starting anomaly simulator: ${simSchedule}`);
   cron.schedule(simSchedule, runSim);
 

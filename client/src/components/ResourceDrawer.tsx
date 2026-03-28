@@ -43,33 +43,33 @@ export function ResourceDrawer({ resource, anomalies, actions, onClose }: Props)
         <div className="p-4 space-y-5">
           <div className="space-y-3">
             <div>
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Name</span>
+              <span className="text-[10px] text-slate-600 uppercase tracking-wider font-medium">Name</span>
               <p className="text-sm font-semibold text-slate-900 mt-0.5">{resource.name || "—"}</p>
             </div>
             <div>
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Resource ID</span>
+              <span className="text-[10px] text-slate-600 uppercase tracking-wider font-medium">Resource ID</span>
               <p className="text-xs font-mono text-slate-600 mt-0.5 break-all">{resource.resource_id}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Type</span>
+                <span className="text-[10px] text-slate-600 uppercase tracking-wider font-medium">Type</span>
                 <p className="text-xs text-slate-700 mt-0.5">{resource.resource_type}</p>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Status</span>
+                <span className="text-[10px] text-slate-600 uppercase tracking-wider font-medium">Status</span>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[resource.status] || "bg-slate-600"}`} />
                   <span className="text-xs text-slate-700">{resource.status}</span>
                 </div>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Hourly Cost</span>
+                <span className="text-[10px] text-slate-600 uppercase tracking-wider font-medium">Hourly Cost</span>
                 <p className="text-xs font-mono text-slate-700 mt-0.5">
                   {resource.hourly_cost > 0 ? `$${resource.hourly_cost.toFixed(4)}` : "—"}
                 </p>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Monthly Cost</span>
+                <span className="text-[10px] text-slate-600 uppercase tracking-wider font-medium">Monthly Cost</span>
                 <p className="text-xs font-mono text-slate-700 mt-0.5">
                   {resource.hourly_cost > 0 ? `$${(resource.hourly_cost * 730).toFixed(2)}` : "—"}
                 </p>
@@ -79,11 +79,11 @@ export function ResourceDrawer({ resource, anomalies, actions, onClose }: Props)
 
           {resource.metadata && Object.keys(resource.metadata).length > 0 && (
             <div>
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Metadata</h3>
+              <h3 className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Metadata</h3>
               <div className="bg-surface rounded-lg border border-border p-3 space-y-1.5">
                 {Object.entries(resource.metadata).filter(([_, v]) => v != null && v !== "").slice(0, 10).map(([k, v]) => (
                   <div key={k} className="flex justify-between text-[11px]">
-                    <span className="text-slate-500">{k}</span>
+                    <span className="text-slate-600">{k}</span>
                     <span className="text-slate-700 font-mono text-right max-w-[200px] truncate">
                       {typeof v === "object" ? JSON.stringify(v) : String(v)}
                     </span>
@@ -94,7 +94,7 @@ export function ResourceDrawer({ resource, anomalies, actions, onClose }: Props)
           )}
 
           <div>
-            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+            <h3 className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">
               Anomalies ({relatedAnomalies.length})
             </h3>
             {relatedAnomalies.length === 0 ? (
@@ -105,15 +105,15 @@ export function ResourceDrawer({ resource, anomalies, actions, onClose }: Props)
                   <div key={a.id} className="p-2 rounded-lg bg-surface border border-border-subtle text-xs">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`font-bold uppercase text-[10px] ${
-                        a.severity === "critical" ? "text-red-600" :
-                        a.severity === "high" ? "text-orange-600" :
-                        a.severity === "medium" ? "text-amber-400" : "text-slate-600"
+                        a.severity === "critical" ? "text-red-700" :
+                        a.severity === "high" ? "text-orange-700" :
+                        a.severity === "medium" ? "text-amber-700" : "text-slate-600"
                       }`}>
                         {a.severity}
                       </span>
                       <span className="text-slate-600">{a.anomaly_type.replace(/_/g, " ")}</span>
                     </div>
-                    <p className="text-slate-500 text-[11px]">{a.description}</p>
+                    <p className="text-slate-600 text-[11px]">{a.description}</p>
                   </div>
                 ))}
               </div>
@@ -121,7 +121,7 @@ export function ResourceDrawer({ resource, anomalies, actions, onClose }: Props)
           </div>
 
           <div>
-            <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+            <h3 className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">
               Actions ({relatedActions.length})
             </h3>
             {relatedActions.length === 0 ? (

@@ -8,12 +8,27 @@ export function isReversible(actionType: string): boolean {
   return REVERSIBLE_ACTIONS.has(actionType);
 }
 
+function isDemoResource(resourceId: string): boolean {
+  if (!config.gcp.projectId?.trim()) return true;
+  if (resourceId.startsWith("i-")) return true;
+  if (resourceId.startsWith("vol-")) return true;
+  if (resourceId.startsWith("fn-")) return true;
+  if (resourceId.startsWith("s3-")) return true;
+  if (resourceId.startsWith("synthetic")) return true;
+  return false;
+}
+
 export async function rollbackAction(actionId: string) {
   const action = await Action.findById(actionId).lean();
   if (!action) throw new Error("Action not found");
   if (action.status === "rolled_back") throw new Error("Already rolled back");
   if (!isReversible(action.action_type)) {
     throw new Error(`Action type "${action.action_type}" is irreversible`);
+  }
+
+  // Demo mode: handle all rollbacks locally
+  if (isDemoResource(action.resource_id)) {
+    return rollbackDemo(action);
   }
 
   switch (action.action_type) {
@@ -26,6 +41,50 @@ export async function rollbackAction(actionId: string) {
     default:
       throw new Error(`No rollback handler for ${action.action_type}`);
   }
+}
+
+async function rollbackDemo(action: any) {
+  const resourceName = action.details?.instanceName || action.details?.resourceName || action.resource_id;
+
+  switch (action.action_type) {
+    case "stop_instance": {
+      await Resource.updateOne(
+        { resource_id: action.resource_id },
+        { status: "RUNNING", hourly_cost: action.cost_before_hourly || 0 }
+      );
+      break;
+    }
+    case "cap_instances": {
+      const previousMax = action.details?.previousMaxInstances;
+      if (previousMax && previousMax !== "unlimited") {
+        await Resource.updateOne(
+          { resource_id: action.resource_id },
+          { $set: { "metadata.maxInstanceCount": previousMax } }
+        );
+      }
+      break;
+    }
+    case "label_resource": {
+      // Remove auto-applied labels
+      const resource = await Resource.findOne({ resource_id: action.resource_id }).lean();
+      const labels = { ...(resource?.metadata?.labels || {}) };
+      delete labels["cost-intel"];
+      delete labels["tagged-by"];
+      delete labels["tagged-at"];
+      await Resource.updateOne(
+        { resource_id: action.resource_id },
+        { $set: { "metadata.labels": labels, tags: labels } }
+      );
+      break;
+    }
+  }
+
+  await Action.updateOne(
+    { _id: action._id },
+    { status: "rolled_back", $set: { "details.rollback_at": new Date().toISOString() } }
+  );
+
+  return { message: `Rolled back ${action.action_type} on ${resourceName} (demo mode)` };
 }
 
 async function rollbackStopInstance(action: any) {

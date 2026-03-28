@@ -1,20 +1,9 @@
 import { Router } from "express";
 import { Resource } from "../models/Resource";
 import { Metric } from "../models/Metric";
+import { getDowngradeTarget } from "../intelligence/pricing";
 
 const router = Router();
-
-const DOWNGRADE_MAP: Record<string, { target: string; savings_pct: number }> = {
-  "n1-standard-4": { target: "n1-standard-2", savings_pct: 50 },
-  "n1-standard-2": { target: "n1-standard-1", savings_pct: 50 },
-  "n1-standard-1": { target: "e2-small", savings_pct: 65 },
-  "e2-standard-4": { target: "e2-standard-2", savings_pct: 50 },
-  "e2-standard-2": { target: "e2-medium", savings_pct: 50 },
-  "e2-medium": { target: "e2-small", savings_pct: 50 },
-  "e2-small": { target: "e2-micro", savings_pct: 50 },
-  "n2-standard-4": { target: "n2-standard-2", savings_pct: 50 },
-  "n2-standard-2": { target: "e2-small", savings_pct: 65 },
-};
 
 router.get("/", async (_req, res) => {
   try {
@@ -49,10 +38,10 @@ router.get("/", async (_req, res) => {
       const { avg_cpu, max_cpu, sample_count } = avgMetrics[0];
 
       const machineType = resource.metadata?.machineType || "unknown";
-      const downgrade = DOWNGRADE_MAP[machineType];
+      const downgrade = getDowngradeTarget(machineType);
 
       if (avg_cpu < 15 && max_cpu < 50 && downgrade) {
-        const monthlySavings = (resource.hourly_cost || 0) * 730 * (downgrade.savings_pct / 100);
+        const monthlySavings = (resource.hourly_cost || 0) * 730 * (downgrade.savingsPct / 100);
         recommendations.push({
           id: `rightsize-${resource.resource_id}`,
           type: "rightsize",

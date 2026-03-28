@@ -9,6 +9,7 @@ import {
   Cell,
 } from "recharts";
 import type { SavingsSummary, Action } from "../types";
+import { TrendingDown, ArrowRight } from "lucide-react";
 
 interface Props {
   savings: SavingsSummary | null;
@@ -39,76 +40,88 @@ export function SavingsTracker({ savings, actions }: Props) {
   const recentActions = actions.filter((a) => a.status === "success").slice(0, 5);
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6 h-full">
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-center">
-          <p className="text-2xl font-bold text-success">${totalMonthly.toFixed(2)}</p>
-          <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Monthly Savings</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-transparent border border-emerald-500/20 text-center relative overflow-hidden group">
+          <div className="absolute inset-0 bg-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <p className="text-3xl font-black text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)] tracking-tighter">${totalMonthly.toFixed(2)}</p>
+          <p className="text-[10px] font-bold text-emerald-600 mt-2 uppercase tracking-widest">Monthly Savings</p>
         </div>
-        <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 text-center">
-          <p className="text-2xl font-bold text-accent">${totalHourly.toFixed(4)}</p>
-          <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Hourly Savings</p>
+        <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-500/10 to-transparent border border-indigo-500/20 text-center relative overflow-hidden group">
+          <div className="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <p className="text-3xl font-black text-indigo-400 drop-shadow-[0_0_10px_rgba(99,102,241,0.5)] tracking-tighter">${totalHourly.toFixed(4)}</p>
+          <p className="text-[10px] font-bold text-indigo-600 mt-2 uppercase tracking-widest">Hourly Savings</p>
         </div>
-        <div className="p-4 rounded-lg bg-violet-50 border border-violet-200 text-center">
-          <p className="text-2xl font-bold text-info">{successCount}</p>
-          <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Actions Taken</p>
+        <div className="p-4 rounded-xl bg-gradient-to-br from-violet-500/10 to-transparent border border-violet-500/20 text-center relative overflow-hidden group">
+          <div className="absolute inset-0 bg-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <p className="text-3xl font-black text-violet-400 drop-shadow-[0_0_10px_rgba(139,92,246,0.5)] tracking-tighter">{successCount}</p>
+          <p className="text-[10px] font-bold text-violet-600 mt-2 uppercase tracking-widest">Successful Actions</p>
         </div>
       </div>
 
       {/* Chart */}
-      {chartData.length > 0 ? (
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#ffffff",
-                border: "1px solid #e2e8f0",
-                borderRadius: "10px",
-                color: "#334155",
-                fontSize: 12,
-                boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-              }}
-              formatter={(value) =>
-                typeof value === "number"
-                  ? [`$${value.toFixed(2)}`, "Monthly Savings"]
-                  : ["", "Monthly Savings"]
-              }
-            />
-            <Bar dataKey="savings" radius={[6, 6, 0, 0]}>
-              {chartData.map((_, i) => (
-                <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      ) : (
-        <div className="flex items-center justify-center py-10 text-slate-500 text-sm">
-          No savings recorded yet
-        </div>
-      )}
+      <div className="flex-1 bg-black/20 rounded-xl p-4 border border-white/5 min-h-[220px]">
+        {chartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} dy={8} />
+              <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "rgba(17, 24, 39, 0.9)",
+                  backdropFilter: "blur(12px)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "12px",
+                  color: "#f8fafc",
+                  fontSize: 12,
+                  boxShadow: "0 10px 40px rgba(0,0,0,0.5)",
+                }}
+                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                itemStyle={{ color: "#10b981", fontWeight: "bold" }}
+                labelStyle={{ color: "#94a3b8", display: "none" }}
+                formatter={(value) =>
+                  typeof value === "number"
+                    ? [`$${value.toFixed(2)}`, "Monthly Savings"]
+                    : ["", "Monthly Savings"]
+                }
+              />
+              <Bar dataKey="savings" radius={[6, 6, 0, 0]} maxBarSize={50} isAnimationActive={false}>
+                {chartData.map((_, i) => (
+                  <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-slate-500">
+            <TrendingDown className="w-8 h-8 opacity-30 mb-2 text-emerald-400" />
+            <p className="text-sm">No savings recorded yet</p>
+          </div>
+        )}
+      </div>
 
       {/* Recent actions */}
       {recentActions.length > 0 && (
-        <div>
-          <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
+        <div className="bg-black/20 rounded-xl border border-white/5 p-4">
+          <h4 className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 pl-1 border-l-2 border-emerald-500">
             Recent Optimizations
           </h4>
-          <div className="flex flex-col divide-y divide-border">
+          <div className="flex flex-col space-y-2">
             {recentActions.map((a) => (
-              <div key={a.id} className="flex items-center gap-3 py-2 text-xs">
-                <span className="font-semibold text-slate-700 w-20 shrink-0">
-                  {ACTION_LABELS[a.action_type] || a.action_type}
+              <div key={a.id} className="flex items-center gap-4 py-2 px-3 rounded-lg bg-white/5 border border-white/5 text-xs">
+                <span className="font-bold text-white w-24 shrink-0 uppercase tracking-wider text-[10px]">
+                  {ACTION_LABELS[a.action_type] || a.action_type.replace(/_/g, " ")}
                 </span>
-                <span className="font-mono text-slate-500 truncate flex-1">
-                  {a.resource_id}
+                <span className="font-mono text-[10px] text-slate-400 truncate flex-1 bg-black/40 px-2 py-1 rounded">
+                  {a.resource_id.split("/").pop()}
                 </span>
-                <span className="text-success font-semibold whitespace-nowrap">
-                  ${a.cost_before_hourly?.toFixed(4)} → ${a.cost_after_hourly?.toFixed(4)}
-                </span>
+                <div className="flex items-center gap-1.5 font-mono bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
+                  <span className="text-red-400">${a.cost_before_hourly?.toFixed(4)}</span>
+                  <ArrowRight className="w-3 h-3 text-slate-500" />
+                  <span className="text-emerald-400 font-bold">${a.cost_after_hourly?.toFixed(4)}</span>
+                </div>
               </div>
             ))}
           </div>

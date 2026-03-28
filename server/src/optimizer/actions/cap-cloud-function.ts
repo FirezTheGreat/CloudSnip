@@ -1,18 +1,53 @@
 import { functionsClient, config } from "../../config";
 import { Resource } from "../../models/Resource";
 
+function isDemoResource(resourceId: string): boolean {
+  if (!config.gcp.projectId?.trim()) return true;
+  if (resourceId.startsWith("fn-")) return true;
+  if (resourceId.startsWith("synthetic")) return true;
+  if (resourceId.startsWith("i-")) return true;
+  return false;
+}
+
 export async function capCloudFunction(anomaly: {
   resource_id: string;
   resource_type: string;
 }) {
   const maxInstances = config.thresholds.maxFunctionInstances;
-
   const resource = await Resource.findOne({ resource_id: anomaly.resource_id }).lean();
   const metadata = resource?.metadata || {};
+
+  // ─── Demo Mode ────────────────────────────────────────────────────
+  if (isDemoResource(anomaly.resource_id)) {
+    // Update metadata in DB
+    await Resource.updateOne(
+      { resource_id: anomaly.resource_id },
+      {
+        $set: {
+          "metadata.maxInstanceCount": maxInstances,
+          last_seen: new Date(),
+        },
+      }
+    );
+
+    return {
+      success: true,
+      costBefore: 0,
+      costAfter: 0,
+      details: {
+        functionName: resource?.name || anomaly.resource_id,
+        maxInstancesSet: maxInstances,
+        previousMaxInstances: metadata.maxInstanceCount || "unlimited",
+        message: `Capped ${resource?.name || anomaly.resource_id} to max ${maxInstances} instances`,
+        mode: "demo",
+      },
+    };
+  }
+
+  // ─── Live Mode ────────────────────────────────────────────────────
   const fullName = metadata.fullName ||
     `projects/${config.gcp.projectId}/locations/${config.gcp.region}/functions/${anomaly.resource_id}`;
 
-  // Gen2 functions use service_config fields; v1 client typings are narrow — cast request for 2nd gen.
   const [operation] = await functionsClient.updateFunction({
     function: {
       name: fullName,

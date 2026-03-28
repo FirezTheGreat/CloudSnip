@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { Server, Zap, HardDrive, Calculator, ChevronRight, RefreshCw } from "lucide-react";
 
 interface MachineType  { type: string; hourly_cost: number; monthly_cost: number }
 interface DiskType     { type: string; cost_per_gb_month: number }
@@ -26,31 +25,29 @@ interface Props {
   resources: Resource[];
 }
 
-// ─── Mini gauge ───────────────────────────────────────────────────────────────
-
 function CostBar({ before, after, max }: { before: number; after: number; max: number }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-3 bg-black/40 p-4 rounded-xl border border-white/5">
       <div>
-        <div className="flex justify-between text-[9px] text-slate-500 mb-0.5">
-          <span>Current</span>
-          <span>${before.toFixed(2)}/mo</span>
+        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+          <span>Current Allocation</span>
+          <span className="text-white">${before.toFixed(2)}/mo</span>
         </div>
-        <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+        <div className="h-4 rounded-full bg-white/5 overflow-hidden border border-white/5">
           <div
-            className="h-full rounded-full bg-red-500/70 transition-all duration-500"
+            className="h-full rounded-full bg-slate-500 transition-all duration-1000 ease-out"
             style={{ width: `${Math.min((before / max) * 100, 100)}%` }}
           />
         </div>
       </div>
       <div>
-        <div className="flex justify-between text-[9px] text-slate-500 mb-0.5">
-          <span>Projected</span>
+        <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-emerald-400 mb-1.5">
+          <span>Projected Allocation</span>
           <span>${after.toFixed(2)}/mo</span>
         </div>
-        <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+        <div className="h-4 rounded-full bg-white/5 overflow-hidden border border-white/5">
           <div
-            className="h-full rounded-full bg-emerald-500/70 transition-all duration-500"
+            className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000 ease-out"
             style={{ width: `${Math.min((after / max) * 100, 100)}%` }}
           />
         </div>
@@ -58,8 +55,6 @@ function CostBar({ before, after, max }: { before: number; after: number; max: n
     </div>
   );
 }
-
-// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function WhatIfSimulator({ resources }: Props) {
   const [machineTypes, setMachineTypes] = useState<MachineType[]>([]);
@@ -143,209 +138,185 @@ export function WhatIfSimulator({ resources }: Props) {
     : 1;
 
   return (
-    <div className="space-y-4">
-      {/* Change type tabs */}
-      <div className="flex flex-wrap gap-1.5">
+    <div className="space-y-6 flex flex-col h-full">
+      <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
         {[
-          { id: "machine_type",  label: "Machine Type",  emoji: "🖥️" },
-          { id: "vm_count",      label: "VM Count",      emoji: "🔢" },
-          { id: "max_instances", label: "Max Instances", emoji: "⚡" },
-          { id: "disk_size",     label: "Disk Size",     emoji: "💽" },
-          { id: "disk_type",     label: "Disk Type",     emoji: "🗄️" },
+          { id: "machine_type",  label: "VM Resize",  icon: <Server className="w-3.5 h-3.5" /> },
+          { id: "vm_count",      label: "VM Count",   icon: <Calculator className="w-3.5 h-3.5" /> },
+          { id: "max_instances", label: "Function Cap", icon: <Zap className="w-3.5 h-3.5" /> },
+          { id: "disk_size",     label: "Disk Size",  icon: <HardDrive className="w-3.5 h-3.5" /> },
+          { id: "disk_type",     label: "Disk Type",  icon: <HardDrive className="w-3.5 h-3.5" /> },
         ].map((opt) => (
           <button
             key={opt.id}
             onClick={() => { setChangeType(opt.id); setResult(null); }}
-            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer border ${
               changeType === opt.id
-                ? "bg-violet-900/50 border-violet-700/60 text-violet-200"
-                : "bg-surface border-border text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                ? "bg-indigo-600 text-white border-indigo-500 shadow-[0_0_15px_rgba(79,70,229,0.4)]"
+                : "bg-white/5 border-white/5 text-slate-400 hover:text-white hover:bg-white/10"
             }`}
           >
-            {opt.emoji} {opt.label}
+            {opt.icon} {opt.label}
           </button>
         ))}
       </div>
 
-      {/* Optional: resource selector */}
-      {resources.length > 0 && (
-        <div>
-          <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-            Resource (optional — for exact current cost)
-          </label>
-          <select
-            value={selectedResource}
-            onChange={(e) => setSelectedResource(e.target.value)}
-            className="w-full mt-1 px-3 py-2 text-xs bg-surface border border-border rounded-lg text-slate-700 focus:outline-none focus:border-accent cursor-pointer"
-          >
-            <option value="">— use pricing table defaults —</option>
-            {resources
-              .filter((r) => {
-                if (changeType === "max_instances") return r.resource_type === "cloud_function";
-                if (changeType === "disk_size" || changeType === "disk_type") return r.resource_type === "disk";
-                return r.resource_type === "compute";
-              })
-              .map((r) => (
-                <option key={r.resource_id} value={r.resource_id}>
-                  {r.name || r.resource_id} · ${((r.hourly_cost || 0) * 730).toFixed(2)}/mo
-                </option>
-              ))}
-          </select>
-        </div>
-      )}
-
-      {/* Change-specific controls */}
-      <div className="space-y-3">
-        {changeType === "machine_type" && (
-          <div>
-            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-              New Machine Type
+      <div className="grid grid-cols-1 gap-4">
+        {resources.length > 0 && (
+          <div className="bg-black/20 p-4 rounded-xl border border-white/5">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">
+              Baseline Resource Context (Optional)
             </label>
             <select
-              value={newMachineType}
-              onChange={(e) => setNewMachineType(e.target.value)}
-              className="w-full mt-1 px-3 py-2 text-xs bg-surface border border-border rounded-lg text-slate-700 focus:outline-none focus:border-accent cursor-pointer"
+              value={selectedResource}
+              onChange={(e) => setSelectedResource(e.target.value)}
+              className="w-full px-4 py-2 text-sm bg-black/40 border border-white/10 rounded-lg text-white appearance-none focus:outline-none focus:border-indigo-500 cursor-pointer"
             >
-              {machineTypes.map((m) => (
-                <option key={m.type} value={m.type}>
-                  {m.type} · ${m.monthly_cost}/mo
-                </option>
-              ))}
+              <option value="">— Use generic pricing defaults —</option>
+              {resources
+                .filter((r) => {
+                  if (changeType === "max_instances") return r.resource_type === "cloud_function";
+                  if (changeType === "disk_size" || changeType === "disk_type") return r.resource_type === "disk";
+                  return r.resource_type === "compute";
+                })
+                .map((r) => (
+                  <option key={r.resource_id} value={r.resource_id}>
+                    {r.name || r.resource_id.split("/").pop()} · ${((r.hourly_cost || 0) * 730).toFixed(2)}/mo
+                  </option>
+                ))}
             </select>
           </div>
         )}
 
-        {changeType === "vm_count" && (
-          <div>
-            <div className="flex justify-between mb-1">
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Number of VMs
-              </label>
-              <span className="text-[11px] font-bold text-slate-800">{vmCount}</span>
+        <div className="bg-black/20 p-4 rounded-xl border border-white/5 space-y-4">
+          <h4 className="flex items-center gap-2 text-[10px] font-bold text-white uppercase tracking-widest mb-3 pl-1 border-l-2 border-indigo-500">
+            Target Configuration
+          </h4>
+          
+          {changeType === "machine_type" && (
+            <div>
+              <select
+                value={newMachineType}
+                onChange={(e) => setNewMachineType(e.target.value)}
+                className="w-full px-4 py-2.5 text-sm bg-black/40 border border-white/10 rounded-lg text-white appearance-none focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                {machineTypes.map((m) => (
+                  <option key={m.type} value={m.type}>
+                    {m.type} · ${m.monthly_cost}/mo
+                  </option>
+                ))}
+              </select>
             </div>
-            <input
-              type="range"
-              min={1}
-              max={20}
-              value={vmCount}
-              onChange={(e) => setVmCount(Number(e.target.value))}
-              className="w-full accent-violet-500 cursor-pointer"
-            />
-            <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
-              <span>1</span><span>20</span>
-            </div>
-          </div>
-        )}
+          )}
 
-        {changeType === "max_instances" && (
-          <div>
-            <div className="flex justify-between mb-1">
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Max Function Instances
-              </label>
-              <span className="text-[11px] font-bold text-slate-800">{maxInstances}</span>
+          {changeType === "vm_count" && (
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Instance Count</span>
+                <span className="text-sm font-black text-white">{vmCount}</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={20}
+                value={vmCount}
+                onChange={(e) => setVmCount(Number(e.target.value))}
+                className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              />
             </div>
-            <input
-              type="range"
-              min={1}
-              max={200}
-              value={maxInstances}
-              onChange={(e) => setMaxInstances(Number(e.target.value))}
-              className="w-full accent-violet-500 cursor-pointer"
-            />
-            <div className="flex justify-between text-[9px] text-slate-600 mt-0.5">
-              <span>1</span><span>200</span>
-            </div>
-          </div>
-        )}
+          )}
 
-        {changeType === "disk_size" && (
-          <div>
-            <div className="flex justify-between mb-1">
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Disk Size (GB)
-              </label>
-              <span className="text-[11px] font-bold text-slate-800">{diskSizeGb} GB</span>
+          {changeType === "max_instances" && (
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Function Concurrency Cap</span>
+                <span className="text-sm font-black text-white">{maxInstances}</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={200}
+                value={maxInstances}
+                onChange={(e) => setMaxInstances(Number(e.target.value))}
+                className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              />
             </div>
-            <input
-              type="range"
-              min={10}
-              max={500}
-              step={10}
-              value={diskSizeGb}
-              onChange={(e) => setDiskSizeGb(Number(e.target.value))}
-              className="w-full accent-violet-500 cursor-pointer"
-            />
-          </div>
-        )}
+          )}
 
-        {(changeType === "disk_size" || changeType === "disk_type") && (
-          <div>
-            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-              Disk Type
-            </label>
-            <div className="flex gap-2 mt-1">
-              {(diskTypes.length > 0
-                ? diskTypes
-                : [
-                    { type: "pd-standard", cost_per_gb_month: 0.04 },
-                    { type: "pd-balanced",  cost_per_gb_month: 0.10 },
-                    { type: "pd-ssd",       cost_per_gb_month: 0.17 },
-                  ]
-              ).map((d) => (
-                <button
-                  key={d.type}
-                  onClick={() => setDiskType(d.type)}
-                  className={`flex-1 py-1.5 text-[10px] font-semibold rounded-lg border transition-all cursor-pointer ${
-                    diskType === d.type
-                      ? "bg-violet-900/50 border-violet-700/60 text-violet-200"
-                      : "bg-surface border-border text-slate-500 hover:text-slate-700"
-                  }`}
-                >
-                  {d.type.replace("pd-", "")}
-                  <br />
-                  <span className="text-[9px] font-normal opacity-70">
-                    ${d.cost_per_gb_month}/GB/mo
-                  </span>
-                </button>
-              ))}
+          {changeType === "disk_size" && (
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Capacity</span>
+                <span className="text-sm font-black text-white">{diskSizeGb} GB</span>
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={500}
+                step={10}
+                value={diskSizeGb}
+                onChange={(e) => setDiskSizeGb(Number(e.target.value))}
+                className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              />
             </div>
-          </div>
-        )}
+          )}
+
+          {(changeType === "disk_size" || changeType === "disk_type") && (
+            <div className="mt-4">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">Storage Tier</span>
+              <div className="grid grid-cols-3 gap-2">
+                {(diskTypes.length > 0
+                  ? diskTypes
+                  : [
+                      { type: "pd-standard", cost_per_gb_month: 0.04 },
+                      { type: "pd-balanced",  cost_per_gb_month: 0.10 },
+                      { type: "pd-ssd",       cost_per_gb_month: 0.17 },
+                    ]
+                ).map((d) => (
+                  <button
+                    key={d.type}
+                    onClick={() => setDiskType(d.type)}
+                    className={`p-2 rounded-lg border transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
+                      diskType === d.type
+                        ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-300 shadow-[0_0_10px_rgba(79,70,229,0.2)]"
+                        : "bg-black/40 border-white/5 text-slate-500 hover:border-white/20 hover:text-slate-300"
+                    }`}
+                  >
+                    <span className="text-xs font-bold uppercase">{d.type.replace("pd-", "")}</span>
+                    <span className="text-[9px] font-mono mt-1 opacity-80">${d.cost_per_gb_month}/GB</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Simulate button */}
       <button
         onClick={simulate}
         disabled={loading}
-        className="w-full py-2.5 rounded-xl bg-violet-700/40 hover:bg-violet-700/60 border border-violet-600/40 text-violet-200 text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-400 shadow-[0_4px_20px_rgba(79,70,229,0.4)] text-white text-sm font-bold uppercase tracking-widest transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group flex items-center justify-center gap-2"
       >
         {loading ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="w-3.5 h-3.5 border border-violet-300 border-t-transparent rounded-full animate-spin" />
-            Calculating…
-          </span>
+          <RefreshCw className="w-5 h-5 animate-spin" />
         ) : (
-          "⚡ Run Simulation"
+          <>
+            Calculate ROI <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+          </>
         )}
       </button>
 
-      {/* Error */}
       {error && (
-        <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+        <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-medium animate-fade-in-up">
           {error}
         </div>
       )}
 
-      {/* Result */}
       {result && (
-        <div className="rounded-xl border border-border bg-surface/50 p-4 space-y-3 animate-fade-in-up">
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-0.5">
-              Scenario
-            </p>
-            <p className="text-xs text-slate-700 font-medium">{result.label}</p>
-          </div>
+        <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-5 animate-slide-in-up mt-auto shadow-[0_0_30px_rgba(79,70,229,0.1)]">
+          <p className="text-xs font-mono text-indigo-400 mb-4 pb-2 border-b border-indigo-500/20">
+            {result.label}
+          </p>
 
           <CostBar
             before={result.current_cost_monthly}
@@ -353,24 +324,22 @@ export function WhatIfSimulator({ resources }: Props) {
             max={maxMonthly}
           />
 
-          <div className="grid grid-cols-3 gap-2 pt-1">
-            <div className="text-center">
-              <p className="text-[9px] text-slate-500 uppercase tracking-wider">Monthly Δ</p>
-              <p className={`text-sm font-bold mt-0.5 ${result.savings_monthly >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                {result.savings_monthly >= 0 ? "-" : "+"}{Math.abs(result.savings_monthly).toFixed(2)}
-                <span className="text-[9px] font-normal text-slate-500"> /mo</span>
+          <div className="grid grid-cols-3 gap-4 pt-5 mt-4 border-t border-white/5">
+            <div className="text-center p-3 rounded-lg bg-black/40 border border-white/5">
+              <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Monthly Impact</p>
+              <p className={`text-xl font-black tracking-tighter mt-1 ${result.savings_monthly >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {result.savings_monthly >= 0 ? "-" : "+"}${Math.abs(result.savings_monthly).toFixed(2)}
               </p>
             </div>
-            <div className="text-center border-x border-border">
-              <p className="text-[9px] text-slate-500 uppercase tracking-wider">Yearly Δ</p>
-              <p className={`text-sm font-bold mt-0.5 ${result.savings_yearly >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                {result.savings_yearly >= 0 ? "-" : "+"}{Math.abs(result.savings_yearly).toFixed(0)}
-                <span className="text-[9px] font-normal text-slate-500"> /yr</span>
+            <div className="text-center p-3 rounded-lg bg-black/40 border border-white/5">
+              <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Yearly Impact</p>
+              <p className={`text-xl font-black tracking-tighter mt-1 ${result.savings_yearly >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {result.savings_yearly >= 0 ? "-" : "+"}${Math.abs(result.savings_yearly).toFixed(0)}
               </p>
             </div>
-            <div className="text-center">
-              <p className="text-[9px] text-slate-500 uppercase tracking-wider">Change</p>
-              <p className={`text-sm font-bold mt-0.5 ${result.percent_change <= 0 ? "text-emerald-600" : "text-red-600"}`}>
+            <div className="text-center p-3 rounded-lg bg-black/40 border border-white/5">
+              <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Δ</p>
+              <p className={`text-xl font-black tracking-tighter mt-1 ${result.percent_change <= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {result.percent_change > 0 ? "+" : ""}{result.percent_change}%
               </p>
             </div>

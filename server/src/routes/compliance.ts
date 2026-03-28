@@ -17,8 +17,13 @@ import { Anomaly } from "../models/Anomaly";
 
 const router = Router();
 
-const APPROVED_REGIONS = ["us-central1", "us-east1", "us-west1", "europe-west1"];
-const REQUIRED_LABELS = ["env", "team", "cost-centre"];
+const APPROVED_REGIONS = [
+  // AWS-style (used by seed data)
+  "us-east-1", "us-east-2", "us-west-1", "us-west-2", "eu-west-1",
+  // GCP-style (if using real GCP)
+  "us-central1", "us-east1", "us-west1", "europe-west1",
+];
+const REQUIRED_LABELS = ["env", "team"];
 
 router.get("/compliance", async (_req, res) => {
   try {

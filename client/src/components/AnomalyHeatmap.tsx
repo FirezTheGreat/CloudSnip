@@ -18,9 +18,9 @@ interface Props {
 // ─── Colour scale ─────────────────────────────────────────────────────────────
 
 function cellColor(count: number, maxCount: number): string {
-  if (count === 0) return "bg-slate-100 border-slate-200";
+  if (count === 0) return "bg-slate-100 border-slate-300";
   const intensity = Math.min(count / maxCount, 1);
-  if (intensity < 0.25) return "bg-amber-100/80 border-amber-200";
+  if (intensity < 0.25) return "bg-amber-100/80 border-amber-300";
   if (intensity < 0.50) return "bg-orange-200/90 border-orange-300";
   if (intensity < 0.75) return "bg-red-300/90 border-red-400";
   return "bg-red-500/90 border-red-600";
@@ -58,7 +58,7 @@ export function AnomalyHeatmap({ cells, maxCount }: Props) {
 
   if (!cells || cells.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
+      <div className="flex items-center justify-center h-32 text-slate-600 text-sm">
         No anomaly data for the past 7 days
       </div>
     );
@@ -85,7 +85,7 @@ export function AnomalyHeatmap({ cells, maxCount }: Props) {
         return (
           <div key={day} className="flex items-center gap-0.5 mb-0.5">
             {/* Day label */}
-            <div className="w-9 text-right text-[10px] text-slate-500 font-medium pr-1.5 shrink-0">
+            <div className="w-9 text-right text-[10px] text-slate-600 font-medium pr-1.5 shrink-0">
               {day}
             </div>
 
@@ -123,15 +123,15 @@ export function AnomalyHeatmap({ cells, maxCount }: Props) {
 
       {/* Legend */}
       <div className="flex items-center gap-2 mt-3 ml-10">
-        <span className="text-[9px] text-slate-500">Less</span>
+        <span className="text-[9px] text-slate-600">Less</span>
         {[0, 0.2, 0.4, 0.6, 0.85, 1].map((intensity, i) => (
           <div
             key={i}
             className={`w-4 h-4 rounded-sm border ${
               intensity === 0
-                ? "bg-slate-100 border-slate-200"
+                ? "bg-slate-100 border-slate-300"
                 : intensity < 0.25
-                ? "bg-amber-100/80 border-amber-200"
+                ? "bg-amber-100/80 border-amber-300"
                 : intensity < 0.5
                 ? "bg-orange-200/90 border-orange-300"
                 : intensity < 0.75
@@ -140,13 +140,13 @@ export function AnomalyHeatmap({ cells, maxCount }: Props) {
             }`}
           />
         ))}
-        <span className="text-[9px] text-slate-500">More</span>
+        <span className="text-[9px] text-slate-600">More</span>
       </div>
 
       {/* Tooltip (fixed, portal-like) */}
       {tooltip && (
         <div
-          className="fixed z-50 px-3 py-2 rounded-lg bg-slate-200 border border-slate-200 shadow-2xl text-xs pointer-events-none"
+          className="fixed z-50 px-3 py-2 rounded-lg bg-slate-200 border border-slate-300 shadow-2xl text-xs pointer-events-none"
           style={{ left: tooltip.x + 8, top: tooltip.y - 60 }}
         >
           <div className="font-semibold text-slate-800 mb-0.5">

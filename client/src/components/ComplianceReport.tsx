@@ -1,13 +1,12 @@
 import { useRef } from "react";
 import type { ComplianceData } from "../types";
-
-// ─── Severity badge ───────────────────────────────────────────────────────────
+import { ShieldAlert, Printer, ShieldCheck } from "lucide-react";
 
 const SEV: Record<string, string> = {
-  critical: "bg-red-50 text-red-600 border-red-200",
-  high:     "bg-orange-50 text-orange-600 border-orange-200",
-  medium:   "bg-amber-50 text-amber-400 border-amber-200",
-  low:      "bg-slate-100/60 text-slate-600 border-slate-200/50",
+  critical: "bg-red-500/10 text-red-400 border-red-500/20",
+  high:     "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  medium:   "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  low:      "bg-slate-500/10 text-slate-400 border-white/10",
 };
 
 const RISK_LABEL: Record<string, string> = {
@@ -18,8 +17,6 @@ const RISK_LABEL: Record<string, string> = {
   idle_not_stopped:  "Idle Unresolved",
 };
 
-// ─── Score ring ───────────────────────────────────────────────────────────────
-
 function ScoreRing({ score }: { score: number }) {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -27,9 +24,9 @@ function ScoreRing({ score }: { score: number }) {
   const color = score >= 80 ? "#10b981" : score >= 60 ? "#f59e0b" : "#ef4444";
 
   return (
-    <div className="relative flex items-center justify-center w-24 h-24">
-      <svg className="absolute w-full h-full -rotate-90" viewBox="0 0 88 88">
-        <circle cx="44" cy="44" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="8" />
+    <div className="relative flex items-center justify-center w-28 h-28 bg-black/40 rounded-2xl border border-white/5 shadow-inner">
+      <svg className="absolute w-24 h-24 -rotate-90" viewBox="0 0 88 88">
+        <circle cx="44" cy="44" r={radius} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="8" />
         <circle
           cx="44"
           cy="44"
@@ -40,19 +37,17 @@ function ScoreRing({ score }: { score: number }) {
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className="transition-all duration-1000"
-          style={{ filter: `drop-shadow(0 0 6px ${color}60)` }}
+          className="transition-all duration-1000 ease-out"
+          style={{ filter: `drop-shadow(0 0 8px ${color}80)` }}
         />
       </svg>
-      <div className="text-center z-10">
-        <div className="text-2xl font-bold" style={{ color }}>{score}</div>
-        <div className="text-[9px] text-slate-500 uppercase tracking-wide">score</div>
+      <div className="text-center z-10 flex flex-col items-center">
+        <div className="text-3xl font-black tracking-tighter" style={{ color }}>{score}</div>
+        <div className="text-[9px] text-slate-400 uppercase tracking-widest mt-0.5">score</div>
       </div>
     </div>
   );
 }
-
-// ─── Main Component ───────────────────────────────────────────────────────────
 
 interface Props {
   data: ComplianceData | null;
@@ -68,8 +63,9 @@ export function ComplianceReport({ data, loading }: Props) {
 
   if (loading || !data) {
     return (
-      <div className="flex items-center justify-center h-32 text-slate-500 text-sm">
-        {loading ? "Generating report…" : "No compliance data available"}
+      <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+        <ShieldCheck className="w-12 h-12 mb-3 opacity-30 text-emerald-400 animate-pulse" />
+        <p className="text-sm font-medium">{loading ? "Generating audit report..." : "No compliance data available"}</p>
       </div>
     );
   }
@@ -77,63 +73,59 @@ export function ComplianceReport({ data, loading }: Props) {
   const { summary, compliance_score, risk_items, actions_audit, actions_by_type } = data;
 
   return (
-    <div ref={printRef} className="space-y-4">
-      {/* Header row: score + summary stats */}
-      <div className="flex items-center gap-6">
+    <div ref={printRef} className="space-y-6">
+      <div className="flex items-center gap-6 p-4 rounded-xl bg-gradient-to-br from-black/40 to-transparent border border-white/5">
         <ScoreRing score={compliance_score} />
 
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 flex-1">
+        <div className="grid grid-cols-3 gap-x-8 gap-y-4 flex-1">
           {[
             { label: "Total Resources",   value: summary.total_resources },
             { label: "Compliant",         value: summary.compliant_resources },
-            { label: "Risk Items",        value: summary.risk_items,            color: summary.risk_items > 0 ? "text-orange-600" : "text-emerald-600" },
-            { label: "Open Anomalies",    value: summary.open_anomalies,        color: summary.open_anomalies > 0 ? "text-red-600" : "text-emerald-600" },
-            { label: "Saved (30d)",       value: `$${summary.total_saved_30d.toFixed(2)}`, color: "text-emerald-600" },
+            { label: "Risk Items",        value: summary.risk_items,            color: summary.risk_items > 0 ? "text-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.5)]" : "text-emerald-400" },
+            { label: "Open Anomalies",    value: summary.open_anomalies,        color: summary.open_anomalies > 0 ? "text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]" : "text-emerald-400" },
+            { label: "Saved (30d)",       value: `$${summary.total_saved_30d.toFixed(2)}`, color: "text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" },
             { label: "Actions (30d)",     value: summary.actions_taken_30d },
           ].map(({ label, value, color }) => (
-            <div key={label}>
-              <p className="text-[9px] text-slate-600 uppercase tracking-wider">{label}</p>
-              <p className={`text-sm font-bold ${color ?? "text-slate-800"}`}>{value}</p>
+            <div key={label} className="flex flex-col">
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+              <p className={`text-xl font-bold ${color ?? "text-white"}`}>{value}</p>
             </div>
           ))}
         </div>
 
         <button
           onClick={handlePrint}
-          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold border border-border text-slate-600 hover:text-slate-800 hover:border-slate-300 transition-colors cursor-pointer bg-surface"
+          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest border border-white/10 text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer self-start"
         >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-          </svg>
-          Print
+          <Printer className="w-3.5 h-3.5" /> Print
         </button>
       </div>
 
-      {/* Risk Items */}
       {risk_items.length > 0 && (
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
-            Risk Items ({risk_items.length})
-          </p>
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+          <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white mb-3 pl-1 border-l-2 border-orange-500">
+            <ShieldAlert className="w-4 h-4 text-orange-400" /> Discovered Risk Items
+            <span className="bg-white/10 text-slate-300 px-2 py-0.5 rounded-full text-[10px]">{risk_items.length}</span>
+          </h4>
+          <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-2">
             {risk_items.map((item, i) => (
-              <div key={i} className="flex items-start gap-2.5 p-2.5 rounded-lg bg-surface/60 border border-border/60">
-                <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${SEV[item.severity] ?? SEV.medium}`}>
+              <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-black/40 border border-white/5 hover:border-white/10 transition-colors">
+                <span className={`shrink-0 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${SEV[item.severity] ?? SEV.medium}`}>
                   {item.severity}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold text-slate-700">
+                  <div className="flex items-center gap-2 mb-1 border-b border-white/5 pb-1">
+                    <span className="text-sm font-semibold text-white">
                       {RISK_LABEL[item.type] ?? item.type.replace(/_/g, " ")}
                     </span>
-                    <span className="text-[9px] text-slate-600 font-mono truncate">
+                    <span className="text-[10px] text-slate-400 font-mono truncate bg-white/5 px-1.5 py-0.5 rounded">
                       {(item.resource_name || item.resource_id).split("/").pop()}
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{item.issue}</p>
+                  <p className="text-xs text-slate-300 leading-relaxed font-mono">{item.issue}</p>
                 </div>
                 {item.monthly_cost > 0 && (
-                  <span className="shrink-0 text-[10px] font-semibold text-red-600">
+                  <span className="shrink-0 text-xs font-bold text-red-400 bg-red-500/10 px-2 py-1 rounded-md border border-red-500/20">
                     ${item.monthly_cost.toFixed(2)}/mo
                   </span>
                 )}
@@ -143,21 +135,20 @@ export function ComplianceReport({ data, loading }: Props) {
         </div>
       )}
 
-      {/* Actions by type */}
       {actions_by_type.length > 0 && (
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+        <div className="pt-2">
+          <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3 pl-1">
             Savings by Action Type (30 days)
-          </p>
-          <div className="space-y-1.5">
+          </h4>
+          <div className="space-y-3 bg-black/40 p-4 rounded-xl border border-white/5">
             {actions_by_type.map((a) => (
-              <div key={a.action_type} className="flex items-center gap-3">
-                <span className="text-[10px] text-slate-600 w-28 shrink-0">
+              <div key={a.action_type} className="flex items-center gap-4">
+                <span className="text-xs text-slate-300 font-medium w-32 shrink-0 capitalize truncate" title={a.action_type}>
                   {a.action_type.replace(/_/g, " ")}
                 </span>
-                <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden border border-white/5">
                   <div
-                    className="h-full rounded-full bg-emerald-500/70"
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 relative"
                     style={{
                       width: `${Math.min(
                         (a.total_monthly_savings /
@@ -166,57 +157,58 @@ export function ComplianceReport({ data, loading }: Props) {
                         100
                       )}%`,
                     }}
-                  />
+                  >
+                    <div className="absolute inset-0 bg-white/20 blur-[2px]" />
+                  </div>
                 </div>
-                <span className="text-[10px] font-semibold text-emerald-600 w-16 text-right shrink-0">
+                <span className="text-xs font-bold text-emerald-400 w-20 text-right shrink-0">
                   ${a.total_monthly_savings.toFixed(2)}/mo
                 </span>
-                <span className="text-[9px] text-slate-600 w-8 text-right shrink-0">×{a.count}</span>
+                <span className="text-[10px] text-slate-500 font-mono w-8 text-right shrink-0">×{a.count}</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Audit log */}
       {actions_audit.length > 0 && (
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+        <div className="pt-2">
+          <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3 pl-1">
             Actions Audit Log (last 30 days)
-          </p>
-          <div className="max-h-48 overflow-y-auto">
-            <table className="w-full text-[10px]">
-              <thead>
-                <tr className="border-b border-border text-slate-500">
-                  <th className="text-left py-1.5 pr-2 font-semibold">Time</th>
-                  <th className="text-left py-1.5 pr-2 font-semibold">Resource</th>
-                  <th className="text-left py-1.5 pr-2 font-semibold">Action</th>
-                  <th className="text-right py-1.5 font-semibold">Savings</th>
+          </h4>
+          <div className="max-h-64 overflow-y-auto custom-scrollbar rounded-xl border border-white/5 bg-black/40 p-1">
+            <table className="w-full text-[11px] whitespace-nowrap">
+              <thead className="sticky top-0 bg-black/80 backdrop-blur-md z-10 border-b border-white/10">
+                <tr className="text-slate-400 uppercase tracking-widest">
+                  <th className="text-left py-3 px-3 font-semibold w-1/4">Time</th>
+                  <th className="text-left py-3 px-3 font-semibold w-2/4">Resource ID</th>
+                  <th className="text-left py-3 px-3 font-semibold w-1/4">Action</th>
+                  <th className="text-right py-3 px-3 font-semibold">Savings</th>
                 </tr>
               </thead>
-              <tbody>
-                {actions_audit.slice(0, 20).map((a, i) => (
-                  <tr key={i} className="border-b border-border/40 hover:bg-black/5">
-                    <td className="py-1.5 pr-2 text-slate-500 font-mono">
+              <tbody className="divide-y divide-white/5">
+                {actions_audit.slice(0, 30).map((a, i) => (
+                  <tr key={i} className="hover:bg-white/[0.02] transition-colors">
+                    <td className="py-2.5 px-3 text-slate-400 font-mono text-[10px]">
                       {new Date(a.executed_at).toLocaleDateString([], {
                         month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
                       })}
                     </td>
-                    <td className="py-1.5 pr-2 text-slate-600 font-mono truncate max-w-[100px]">
+                    <td className="py-2.5 px-3 text-slate-300 font-mono truncate max-w-[200px]" title={a.resource_id}>
                       {a.resource_id.split("/").pop()}
                     </td>
-                    <td className="py-1.5 pr-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    <td className="py-2.5 px-3">
+                      <span className={`px-2 py-0.5 rounded font-bold uppercase tracking-wider text-[9px] border inline-block ${
                         a.status === "success"
-                          ? "bg-emerald-50 text-emerald-600"
-                          : "bg-slate-100 text-slate-600"
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-white/5 text-slate-300 border-white/10"
                       }`}>
                         {a.action_type.replace(/_/g, " ")}
                         {a.dry_run ? " (dry)" : ""}
                       </span>
                     </td>
-                    <td className="py-1.5 text-right font-semibold text-emerald-600">
-                      {a.savings_monthly ? `$${a.savings_monthly.toFixed(2)}/mo` : "—"}
+                    <td className="py-2.5 px-3 text-right font-bold text-emerald-400">
+                      {a.savings_monthly ? `$${a.savings_monthly.toFixed(2)}` : "—"}
                     </td>
                   </tr>
                 ))}
@@ -226,8 +218,8 @@ export function ComplianceReport({ data, loading }: Props) {
         </div>
       )}
 
-      <p className="text-[9px] text-slate-700 text-right">
-        Generated {new Date(data.generated_at).toLocaleString()} · CloudSnip Cloud Cost Intelligence
+      <p className="text-[10px] text-slate-500 text-center font-mono pt-4 opacity-50">
+        Generated {new Date(data.generated_at).toLocaleString()} · CloudSnip Enterprise Audit
       </p>
     </div>
   );

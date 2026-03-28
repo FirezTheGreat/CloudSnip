@@ -347,8 +347,16 @@ async function simulateOrphanDisk(): Promise<TriggerResult | null> {
     resourceId = disk.resourceId;
     resourceName = disk.name;
   } else {
+    // Create varied disk characteristics
+    const diskSizes = [20, 50, 100, 150, 200];
+    const diskTypes = ["gp2", "gp3", "io1", "st1"] as const;
+    const selectedSize = diskSizes[Math.floor(Math.random() * diskSizes.length)];
+    const selectedType = diskTypes[Math.floor(Math.random() * diskTypes.length)];
+    const diskCostPerGb: Record<string, number> = { gp2: 0.10, gp3: 0.08, io1: 0.125, st1: 0.045 };
+    const hourlyCost = selectedSize * (diskCostPerGb[selectedType] || 0.08) / 730;
+
     resourceId = `synthetic-disk-${Date.now()}`;
-    resourceName = "cloudsnip-orphan-disk (synthetic)";
+    resourceName = `orphan-${selectedType}-${selectedSize}gb`;
     await Resource.updateOne(
       { resource_id: resourceId },
       {
@@ -356,13 +364,13 @@ async function simulateOrphanDisk(): Promise<TriggerResult | null> {
           resource_type: "disk",
           name: resourceName,
           status: "unattached",
-          hourly_cost: 10 * (0.04 / 730), // 10 GB pd-standard
-          region: config.gcp.region,
+          hourly_cost: hourlyCost,
+          region: "us-east-1",
           last_seen: new Date(),
           metadata: {
-            sizeGb: 10,
-            diskType: "pd-standard",
-            zone: config.gcp.zone,
+            sizeGb: selectedSize,
+            diskType: selectedType,
+            zone: "us-east-1a",
             users: [],
             synthetic: true,
           },
@@ -396,15 +404,22 @@ async function simulateOrphanDisk(): Promise<TriggerResult | null> {
       resolved: false,
     }).lean();
 
+    // Dynamic anomaly score based on disk cost (bigger = higher confidence waste)
+    const diskResource = await Resource.findOne({ resource_id: resourceId }).lean();
+    const monthlyCost = (diskResource?.hourly_cost || 0) * 730;
+    const anomalyScore = Math.min(0.98, 0.60 + (monthlyCost / 50) * 0.3 + Math.random() * 0.08);
+    const sizeGb = diskResource?.metadata?.sizeGb || 10;
+    const diskType = diskResource?.metadata?.diskType || "gp2";
+
     if (!openDup) {
       await Anomaly.create({
         resource_id: resourceId,
         resource_type: "disk",
         anomaly_type: "unused_volume",
-        severity: "medium",
-        anomaly_score: 0.82,
-        description: `Unattached persistent disk ${resourceName} (10 GB, pd-standard) has no users — costing $0.40/month for zero utility`,
-        metric_snapshot: { sizeGb: 10, diskType: "pd-standard", users: [] },
+        severity: monthlyCost > 10 ? "high" : monthlyCost > 3 ? "medium" : "low",
+        anomaly_score: Number(anomalyScore.toFixed(2)),
+        description: `Unattached ${diskType} disk ${resourceName} (${sizeGb} GB) has no users — costing $${monthlyCost.toFixed(2)}/month for zero utility`,
+        metric_snapshot: { sizeGb, diskType, users: [] },
       });
     }
 

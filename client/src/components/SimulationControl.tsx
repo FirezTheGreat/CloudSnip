@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SimulationHistory } from "../types";
+import { Zap, HardDrive, Activity, Moon, DollarSign, RefreshCw, Layers } from "lucide-react";
 
 interface ScenarioConfig {
   id: string;
@@ -15,40 +16,40 @@ const SCENARIOS: ScenarioConfig[] = [
     id: "idle_instance",
     label: "Idle VM",
     description: "Inject near-zero CPU metrics. Triggers idle detection → VM is stopped.",
-    icon: <IconSleep />,
-    color: "text-amber-400 border-amber-800/40 bg-amber-50 hover:bg-amber-50",
+    icon: <Moon className="w-5 h-5 text-indigo-400" />,
+    color: "text-indigo-400 border-indigo-500/20 bg-indigo-500/10 hover:bg-indigo-500/20 hover:border-indigo-500/40 shadow-[0_0_15px_rgba(99,102,241,0.1)]",
     tag: "stop_instance",
   },
   {
     id: "runaway_function",
     label: "Function Spike",
     description: "30× invocation burst on Cloud Function. Triggers cap to max 5 instances.",
-    icon: <IconBolt />,
-    color: "text-red-600 border-red-200 bg-red-50 hover:bg-red-50",
+    icon: <Zap className="w-5 h-5 text-amber-400" />,
+    color: "text-amber-400 border-amber-500/20 bg-amber-500/10 hover:bg-amber-500/20 hover:border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.1)]",
     tag: "cap_instances",
   },
   {
     id: "orphan_disk",
     label: "Orphan Disk",
     description: "Unattached persistent disk detected. Triggers disk-cleanup action.",
-    icon: <IconDisk />,
-    color: "text-orange-600 border-orange-200 bg-orange-50 hover:bg-orange-50",
+    icon: <HardDrive className="w-5 h-5 text-slate-400" />,
+    color: "text-slate-400 border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 shadow-[0_0_15px_rgba(255,255,255,0.05)]",
     tag: "delete_disk",
   },
   {
     id: "traffic_spike",
     label: "Traffic Spike",
     description: "25× network surge on a VM. Resource labelled for review.",
-    icon: <IconWave />,
-    color: "text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-50",
+    icon: <Activity className="w-5 h-5 text-cyan-400" />,
+    color: "text-cyan-400 border-cyan-500/20 bg-cyan-500/10 hover:bg-cyan-500/20 hover:border-cyan-500/40 shadow-[0_0_15px_rgba(34,211,238,0.1)]",
     tag: "label_resource",
   },
   {
     id: "cost_spike",
     label: "Cost Spike",
     description: "Hourly cost inflated 4.5×. Triggers cost-spike detection + alert.",
-    icon: <IconCost />,
-    color: "text-purple-600 border-purple-200 bg-purple-50 hover:bg-purple-50",
+    icon: <DollarSign className="w-5 h-5 text-red-400" />,
+    color: "text-red-400 border-red-500/20 bg-red-500/10 hover:bg-red-500/20 hover:border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.1)]",
     tag: "label_resource",
   },
 ];
@@ -90,153 +91,98 @@ export function SimulationControl({ simulationHistory, onTrigger, onAutoRun }: S
   }
 
   return (
-    <div>
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-4 border-b border-white/5 pb-4">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase bg-violet-900/40 border border-violet-700/40 text-violet-700">
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase bg-violet-500/10 border border-violet-500/20 text-violet-400">
+            <span className="w-2 h-2 rounded-full bg-violet-500 animate-pulse shadow-[0_0_8px_currentColor]" />
             Live Demo Mode
           </span>
         </div>
         <button
           onClick={handleAutoRun}
           disabled={loading !== null}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-700/30 hover:bg-violet-700/50 border border-violet-600/40 text-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/30 text-emerald-400 transition-all shadow-[0_0_15px_rgba(16,185,129,0.15)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer group"
         >
           {loading === "auto" ? (
-            <span className="w-3.5 h-3.5 border border-violet-300 border-t-transparent rounded-full animate-spin" />
+            <RefreshCw className="w-4 h-4 animate-spin" />
           ) : (
-            <IconDice />
+            <Layers className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" />
           )}
           Random Scenario
         </button>
       </div>
 
-      {/* Scenario cards grid */}
-      <div className="grid grid-cols-1 gap-2 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         {SCENARIOS.map((s) => (
           <button
             key={s.id}
             onClick={() => handleTrigger(s.id)}
             disabled={loading !== null}
-            className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all
+            className={`flex flex-col gap-2 p-4 rounded-xl border text-left transition-all duration-300
               disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer group ${s.color}`}
           >
-            <div className="mt-0.5 w-7 h-7 flex items-center justify-center shrink-0">
-              {loading === s.id ? (
-                <span className="w-4 h-4 border border-current border-t-transparent rounded-full animate-spin" />
-              ) : (
-                s.icon
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-xs font-semibold">{s.label}</span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-black/20">
-                  {s.tag}
-                </span>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-black/40 border border-white/5 shrink-0">
+                  {loading === s.id ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-current" />
+                  ) : (
+                    s.icon
+                  )}
+                </div>
+                <span className="text-sm font-bold tracking-wide">{s.label}</span>
               </div>
-              <p className="text-[10px] opacity-70 leading-relaxed">{s.description}</p>
+              <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-black/40 border border-white/5">
+                {s.tag}
+              </span>
             </div>
+            <p className="text-[11px] opacity-80 leading-relaxed font-mono">{s.description}</p>
           </button>
         ))}
       </div>
 
-      {/* Result toast */}
       {lastResult && (
         <div
-          className={`text-xs px-3 py-2 rounded-lg mb-3 font-medium ${
+          className={`text-xs px-4 py-3 rounded-xl mb-4 font-bold border ${
             lastResult.startsWith("✓")
-              ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-              : "bg-red-50 border border-red-200 text-red-700"
-          }`}
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+              : "bg-red-500/10 border-red-500/30 text-red-400"
+          } animate-fade-in-up flex items-center gap-2`}
         >
           {lastResult}
         </div>
       )}
 
-      {/* Simulation history mini-list */}
       {simulationHistory.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            Recent Simulations
+        <div className="mt-auto pt-4 border-t border-white/5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3 pl-1">
+            Recent Injections
           </p>
-          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+          <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-2">
             {simulationHistory.slice(0, 8).map((ev) => (
-              <div key={String(ev._id)} className="flex items-start gap-2 text-[10px]">
+              <div key={String(ev._id)} className="flex items-center gap-3 text-xs bg-black/40 p-2 rounded-lg border border-white/5">
                 <span
-                  className={`mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${
-                    ev.triggered_by === "manual" ? "bg-violet-400" : "bg-slate-500"
+                  className={`w-2 h-2 rounded-full shrink-0 shadow-[0_0_8px_currentColor] ${
+                    ev.triggered_by === "manual" ? "bg-violet-400 text-violet-400" : "bg-emerald-400 text-emerald-400"
                   }`}
                 />
-                <div className="min-w-0">
-                  <span className="font-medium text-slate-700">{ev.scenario}</span>
-                  <span className="text-slate-500 ml-1.5">
-                    {new Date(ev.triggered_at).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                  {ev.triggered_by === "auto" && (
-                    <span className="ml-1 text-slate-600">(auto)</span>
-                  )}
-                </div>
+                <span className="font-bold text-white min-w-[120px]">{ev.scenario}</span>
+                <span className="text-slate-400 font-mono text-[10px]">
+                  {new Date(ev.triggered_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                  })}
+                </span>
+                {ev.triggered_by === "auto" && (
+                  <span className="ml-auto px-1.5 py-0.5 bg-white/5 text-slate-400 rounded text-[9px] uppercase font-bold border border-white/10">auto</span>
+                )}
               </div>
             ))}
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-function IconSleep() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-    </svg>
-  );
-}
-
-function IconBolt() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-  );
-}
-
-function IconDisk() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-    </svg>
-  );
-}
-
-function IconWave() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-    </svg>
-  );
-}
-
-function IconCost() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-    </svg>
-  );
-}
-
-function IconDice() {
-  return (
-    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-    </svg>
   );
 }

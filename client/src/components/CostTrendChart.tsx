@@ -9,6 +9,7 @@ import {
   Line,
 } from "recharts";
 import type { CostTrend, ForecastPoint } from "../types";
+import { format } from "date-fns";
 
 const COLORS: Record<string, string> = {
   compute: "#3b82f6",
@@ -72,15 +73,12 @@ function formatAxisLabel(iso: string, hours: number, sameCalendarDay: boolean): 
   if (Number.isNaN(d.getTime())) return iso;
 
   if (hours <= 6) {
-    if (sameCalendarDay) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    }
-    return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return format(d, sameCalendarDay ? "HH:mm" : "MMM d, HH:mm");
   }
   if (hours <= 24) {
-    return d.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return format(d, "EEE HH:mm");
   }
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return format(d, "MMM d");
 }
 
 export function CostTrendChart({
@@ -137,37 +135,28 @@ export function CostTrendChart({
   if (chartData.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[300px] text-slate-500">
-        <svg className="w-10 h-10 mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
-          />
+        <svg className="w-10 h-10 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
         </svg>
         <p className="text-sm font-medium">No cost data yet</p>
-        <p className="text-xs mt-1 opacity-60 text-center max-w-sm">
-          Run <strong>Trigger Scan</strong> with GCP configured, or <code className="text-slate-600">npm run db:seed</code> for
-          sample metrics. The chart uses <strong>estimated_cost</strong> from inventory.
-        </p>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4 flex-wrap">
           {resourceTypes.map((type) => (
-            <div key={type} className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[type] || "#6b7280" }} />
-              <span className="text-xs text-slate-600 font-medium">{LABELS[type] || type}</span>
+            <div key={type} className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor]" style={{ backgroundColor: COLORS[type] || "#64748b", color: COLORS[type] || "#64748b" }} />
+              <span className="text-xs text-slate-300 font-medium">{LABELS[type] || type}</span>
             </div>
           ))}
           {showForecast && (
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-              <span className="text-xs text-cyan-600 font-medium">Forecast</span>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_currentColor] text-cyan-400" />
+              <span className="text-xs text-cyan-400 font-medium tracking-wide">Forecast</span>
             </div>
           )}
         </div>
@@ -177,24 +166,24 @@ export function CostTrendChart({
             <button
               type="button"
               onClick={onToggleForecast}
-              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide rounded-md border transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg border transition-all cursor-pointer ${
                 showForecast
-                  ? "bg-cyan-50 text-cyan-600 border-cyan-200"
-                  : "bg-surface text-slate-500 border-border hover:text-slate-700"
+                  ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/40 shadow-[0_0_10px_rgba(34,211,238,0.2)]"
+                  : "bg-white/5 text-slate-400 border-white/10 hover:text-white hover:bg-white/10"
               }`}
             >
               Forecast
             </button>
           )}
           {onHoursChange && (
-            <div className="flex bg-surface rounded-lg border border-border overflow-hidden">
+            <div className="flex bg-black/40 rounded-lg border border-white/10 overflow-hidden p-0.5">
               {RANGE_OPTIONS.map((opt) => (
                 <button
                   type="button"
                   key={opt.value}
                   onClick={() => onHoursChange(opt.value)}
-                  className={`px-2.5 py-1 text-[10px] font-bold transition-colors cursor-pointer ${
-                    hours === opt.value ? "bg-accent text-white" : "text-slate-600 hover:text-slate-800"
+                  className={`px-3 py-1 text-[10px] font-bold tracking-wider rounded-md transition-colors cursor-pointer ${
+                    hours === opt.value ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
                   {opt.label}
@@ -205,66 +194,76 @@ export function CostTrendChart({
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={280}>
-        <ComposedChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-          <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#ffffff",
-              border: "1px solid #e2e8f0",
-              borderRadius: "10px",
-              color: "#334155",
-              fontSize: 12,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-            }}
-          />
-          {resourceTypes.map((type) => (
-            <Line
-              key={type}
-              type="monotone"
-              dataKey={type}
-              stroke={COLORS[type] || "#6b7280"}
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-              activeDot={{ r: 4, strokeWidth: 0 }}
-              name={LABELS[type] || type}
+      <div className="flex-1 min-h-[300px] min-w-0 w-full relative">
+        <ResponsiveContainer width="99%" height="100%">
+          <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} dy={10} />
+            <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value.toFixed(3)}`} />
+            <Tooltip
+              isAnimationActive={false}
+              contentStyle={{
+                backgroundColor: "rgba(17, 24, 39, 0.9)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "12px",
+                color: "#f8fafc",
+                fontSize: 12,
+                boxShadow: "0 10px 40px rgba(0,0,0,0.5)",
+              }}
+              itemStyle={{ color: "#e2e8f0" }}
+              labelStyle={{ color: "#94a3b8", marginBottom: "8px", fontWeight: "bold" }}
             />
-          ))}
-          {showForecast && (
-            <>
-              <Area
-                type="monotone"
-                dataKey="forecast_upper"
-                stroke="none"
-                fill="#06b6d4"
-                fillOpacity={0.08}
-                name="Upper Bound"
-              />
-              <Area
-                type="monotone"
-                dataKey="forecast_lower"
-                stroke="none"
-                fill="#06b6d4"
-                fillOpacity={0.08}
-                name="Lower Bound"
-              />
+            {resourceTypes.map((type) => (
               <Line
+                key={type}
                 type="monotone"
-                dataKey="forecast"
-                stroke="#06b6d4"
+                dataKey={type}
+                stroke={COLORS[type] || "#64748b"}
                 strokeWidth={2}
-                strokeDasharray="6 3"
                 dot={false}
                 connectNulls
-                name="Forecast"
+                isAnimationActive={false}
+                activeDot={{ r: 4, strokeWidth: 0, fill: COLORS[type] || "#64748b" }}
+                name={LABELS[type] || type}
               />
-            </>
-          )}
-        </ComposedChart>
-      </ResponsiveContainer>
+            ))}
+            {showForecast && (
+              <>
+                <Area
+                  type="monotone"
+                  dataKey="forecast_upper"
+                  stroke="none"
+                  fill="#22d3ee"
+                  fillOpacity={0.1}
+                  isAnimationActive={false}
+                  name="Upper Bound"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="forecast_lower"
+                  stroke="none"
+                  fill="#0B0F17"
+                  fillOpacity={1}
+                  isAnimationActive={false}
+                  name="Lower Bound"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="forecast"
+                  stroke="#22d3ee"
+                  strokeWidth={2}
+                  strokeDasharray="4 4"
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                  name="Forecast"
+                />
+              </>
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
