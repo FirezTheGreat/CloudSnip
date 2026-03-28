@@ -2,3 +2,6 @@ flask==3.0.3
 scikit-learn==1.5.1
 numpy==1.26.4
 gunicorn==22.0.0
+joblib==1.4.2
+prophet==1.1.6
+pandas==2.2.3

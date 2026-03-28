@@ -1,6 +1,11 @@
 node_modules/
 dist/
 .env
+.env.development
+.env.production
 *.log
 service-account-key.json
 *-key.json
+__pycache__/
+*.pyc
+ml-service/.venv/

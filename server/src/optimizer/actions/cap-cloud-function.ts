@@ -12,13 +12,14 @@ export async function capCloudFunction(anomaly: {
   const fullName = metadata.fullName ||
     `projects/${config.gcp.projectId}/locations/${config.gcp.region}/functions/${anomaly.resource_id}`;
 
+  // Gen2 functions use service_config fields; v1 client typings are narrow — cast request for 2nd gen.
   const [operation] = await functionsClient.updateFunction({
     function: {
       name: fullName,
       serviceConfig: {
         maxInstanceCount: maxInstances,
       },
-    },
+    } as Parameters<typeof functionsClient.updateFunction>[0]["function"],
     updateMask: {
       paths: ["service_config.max_instance_count"],
     },

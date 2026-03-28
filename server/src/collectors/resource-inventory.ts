@@ -33,7 +33,13 @@ export async function collectResourceInventory(): Promise<ResourceInfo[]> {
   if (diskResult.status === "fulfilled") resources.push(...diskResult.value);
   if (storageResult.status === "fulfilled") resources.push(...storageResult.value);
 
+  const projectId = config.gcp.projectId?.trim() || "";
+
   for (const r of resources) {
+    const metadata = {
+      ...r.metadata,
+      ...(projectId ? { gcp_project_id: projectId } : {}),
+    };
     await Resource.updateOne(
       { resource_id: r.resourceId },
       {
@@ -43,7 +49,7 @@ export async function collectResourceInventory(): Promise<ResourceInfo[]> {
           status: r.status,
           hourly_cost: r.hourlyCost,
           last_seen: new Date(),
-          metadata: r.metadata,
+          metadata,
         },
         $setOnInsert: {
           resource_id: r.resourceId,
@@ -102,6 +108,13 @@ async function collectCloudFunctions(): Promise<ResourceInfo[]> {
 
     for (const fn of functions || []) {
       const name = (fn.name || "").split("/").pop() || "";
+      // Gen2 / protobuf shapes vary by API version; keep loose typing for metadata.
+      const f = fn as {
+        buildConfig?: { runtime?: string | null; entryPoint?: string | null };
+        serviceConfig?: { availableMemory?: string | null; maxInstanceCount?: number | null };
+        updateTime?: { seconds?: number | string | null } | string | null;
+        name?: string | null;
+      };
 
       results.push({
         resourceId: name,
@@ -110,12 +123,12 @@ async function collectCloudFunctions(): Promise<ResourceInfo[]> {
         status: "active",
         hourlyCost: 0,
         metadata: {
-          runtime: fn.buildConfig?.runtime,
-          entryPoint: fn.buildConfig?.entryPoint,
-          availableMemory: fn.serviceConfig?.availableMemory,
-          maxInstanceCount: fn.serviceConfig?.maxInstanceCount,
-          updateTime: fn.updateTime,
-          fullName: fn.name,
+          runtime: f.buildConfig?.runtime ?? undefined,
+          entryPoint: f.buildConfig?.entryPoint ?? undefined,
+          availableMemory: f.serviceConfig?.availableMemory ?? undefined,
+          maxInstanceCount: f.serviceConfig?.maxInstanceCount ?? undefined,
+          updateTime: f.updateTime,
+          fullName: f.name,
         },
       });
     }

@@ -1,0 +1,6 @@
+{
+  "name": "cloudsnip-demo-function",
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.0.0"
+  }
+}

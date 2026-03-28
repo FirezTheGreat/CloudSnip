@@ -2,6 +2,8 @@ import { config } from "../config";
 import { Metric } from "../models/Metric";
 import { Anomaly } from "../models/Anomaly";
 import { Resource } from "../models/Resource";
+import { generateExplanation } from "../notifications/explanation";
+import { notifyAnomalyDetected } from "../notifications/slack";
 
 interface MLAnomaly {
   resource_id: string;
@@ -18,10 +20,12 @@ interface MLResponse {
 }
 
 const SEVERITY_MAP: Record<string, (score: number) => string> = {
-  idle_instance: (s) => (s > 0.9 ? "high" : s > 0.7 ? "medium" : "low"),
-  runaway_function: (s) => (s > 0.85 ? "critical" : s > 0.7 ? "high" : "medium"),
-  cost_spike: (s) => (s > 0.9 ? "critical" : s > 0.75 ? "high" : "medium"),
-  usage_anomaly: (s) => (s > 0.8 ? "high" : "medium"),
+  idle_instance:    (s) => (s > 0.9 ? "high"     : s > 0.7 ? "medium" : "low"),
+  runaway_function: (s) => (s > 0.85 ? "critical" : s > 0.7 ? "high"   : "medium"),
+  cost_spike:       (s) => (s > 0.9 ? "critical" : s > 0.75 ? "high"   : "medium"),
+  traffic_spike:    (s) => (s > 0.85 ? "high"     : s > 0.7 ? "medium" : "low"),
+  unused_volume:    (_) => "medium",
+  usage_anomaly:    (s) => (s > 0.8 ? "high"     : "medium"),
 };
 
 export async function detectAnomalies(): Promise<MLAnomaly[]> {
@@ -49,21 +53,26 @@ export async function detectAnomalies(): Promise<MLAnomaly[]> {
     },
   ]);
 
-  if (metricsRaw.length < 10) {
-    console.log(`[Anomaly] Not enough data points (${metricsRaw.length}) — need at least 10`);
+  const minSamples = 8;
+  if (metricsRaw.length < minSamples) {
+    console.log(
+      `[Anomaly] Not enough data points (${metricsRaw.length}) — need at least ${minSamples} (collect metrics / seed / DEMO_SIMULATION)`
+    );
     return [];
   }
 
   const resourceIds = [...new Set(metricsRaw.map((m) => m._id.resource_id))];
-  const resourceCosts = await Resource.find(
+  const resources = await Resource.find(
     { resource_id: { $in: resourceIds } },
-    { resource_id: 1, hourly_cost: 1 }
+    { resource_id: 1, hourly_cost: 1, resource_type: 1 }
   ).lean();
-  const costMap = new Map(resourceCosts.map((r) => [r.resource_id, r.hourly_cost || 0]));
+  const costMap = new Map(resources.map((r) => [r.resource_id, r.hourly_cost || 0]));
+  const typeMap = new Map(resources.map((r) => [r.resource_id, r.resource_type || "unknown"]));
 
   const payload = {
     metrics: metricsRaw.map((row) => ({
       resource_id: row._id.resource_id,
+      resource_type: typeMap.get(row._id.resource_id) || "unknown",
       timestamp: row._id.time,
       cpu_utilization: row.cpu_utilization || 0,
       invocation_count: row.invocation_count || 0,
@@ -85,7 +94,7 @@ export async function detectAnomalies(): Promise<MLAnomaly[]> {
       return [];
     }
 
-    const data: MLResponse = await response.json();
+    const data = (await response.json()) as MLResponse;
     console.log(`[Anomaly] ML service analyzed ${data.model_info.samples_used} samples, found ${data.anomalies.length} anomalies`);
 
     const confirmedAnomalies: MLAnomaly[] = [];
@@ -102,15 +111,56 @@ export async function detectAnomalies(): Promise<MLAnomaly[]> {
         { resource_type: 1 }
       ).lean();
 
-      await Anomaly.create({
+      const openDup = await Anomaly.findOne({
         resource_id: anomaly.resource_id,
-        resource_type: resource?.resource_type || "unknown",
         anomaly_type: anomaly.anomaly_type,
+        resolved: false,
+      }).lean();
+
+      const explanation = generateExplanation({
+        anomalyType: anomaly.anomaly_type,
+        resourceId: anomaly.resource_id,
+        resourceType: resource?.resource_type || "unknown",
         severity,
-        anomaly_score: anomaly.anomaly_score,
-        metric_snapshot: anomaly.latest_metrics,
-        description,
+        anomalyScore: anomaly.anomaly_score,
+        metrics: anomaly.latest_metrics,
       });
+
+      if (openDup) {
+        await Anomaly.updateOne(
+          { _id: openDup._id },
+          {
+            $set: {
+              anomaly_score: anomaly.anomaly_score,
+              severity,
+              metric_snapshot: anomaly.latest_metrics,
+              description,
+              explanation,
+            },
+          }
+        );
+      } else {
+        await Anomaly.create({
+          resource_id: anomaly.resource_id,
+          resource_type: resource?.resource_type || "unknown",
+          anomaly_type: anomaly.anomaly_type,
+          severity,
+          anomaly_score: anomaly.anomaly_score,
+          metric_snapshot: anomaly.latest_metrics,
+          description,
+          explanation,
+        });
+
+        // Slack: alert on new anomaly detection (non-blocking)
+        notifyAnomalyDetected({
+          explanation,
+          resourceId: anomaly.resource_id,
+          resourceType: resource?.resource_type || "unknown",
+          severity,
+          anomalyScore: anomaly.anomaly_score,
+          detectedAt: new Date(),
+        }).catch(() => null);
+      }
 
       confirmedAnomalies.push(anomaly);
     }
@@ -134,12 +184,22 @@ function buildDescription(anomaly: MLAnomaly): string {
       break;
     case "runaway_function":
       parts.push(
-        `Cloud Function ${anomaly.resource_id} invocation spike — ${anomaly.latest_metrics.invocation_count} invocations`
+        `Cloud Function ${anomaly.resource_id} invocation spike — ${anomaly.latest_metrics.invocation_count?.toFixed(0)} invocations`
       );
       break;
     case "cost_spike":
       parts.push(
         `Cost spike on ${anomaly.resource_id} — $${anomaly.latest_metrics.estimated_hourly_cost?.toFixed(4)}/hr`
+      );
+      break;
+    case "traffic_spike":
+      parts.push(
+        `Traffic surge on ${anomaly.resource_id} — ${(anomaly.latest_metrics.network_in / 1_000_000).toFixed(1)} MB/s in, ${(anomaly.latest_metrics.network_out / 1_000_000).toFixed(1)} MB/s out`
+      );
+      break;
+    case "unused_volume":
+      parts.push(
+        `Unattached disk ${anomaly.resource_id} — no users, accruing storage cost for zero utility`
       );
       break;
     default:

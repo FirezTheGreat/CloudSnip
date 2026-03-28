@@ -33,6 +33,7 @@ router.get("/", async (req, res) => {
         anomaly_score: a.anomaly_score,
         metric_snapshot: a.metric_snapshot,
         description: a.description,
+        explanation: a.explanation || null,
         resolved: a.resolved,
         resolved_at: a.resolved_at,
         action_type: action?.action_type || null,
@@ -73,6 +74,56 @@ router.get("/stats", async (_req, res) => {
     ]);
 
     res.json({ data });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/heatmap", async (_req, res) => {
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const raw = await Anomaly.aggregate([
+      { $match: { detected_at: { $gt: sevenDaysAgo } } },
+      {
+        $group: {
+          _id: {
+            dayOfWeek: { $dayOfWeek: "$detected_at" }, // 1=Sun … 7=Sat
+            hour: { $hour: "$detected_at" },
+          },
+          count: { $sum: 1 },
+          types: { $addToSet: "$anomaly_type" },
+        },
+      },
+    ]);
+
+    // Build a lookup map: "dayOfWeek-hour" → { count, types }
+    const map: Record<string, { count: number; types: string[] }> = {};
+    for (const row of raw) {
+      map[`${row._id.dayOfWeek}-${row._id.hour}`] = {
+        count: row.count,
+        types: row.types,
+      };
+    }
+
+    // Flatten into array the UI can render directly
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const cells = [];
+    for (let dayIdx = 1; dayIdx <= 7; dayIdx++) {
+      for (let hour = 0; hour < 24; hour++) {
+        const key = `${dayIdx}-${hour}`;
+        cells.push({
+          day: DAYS[dayIdx - 1],
+          day_index: dayIdx,
+          hour,
+          count: map[key]?.count || 0,
+          types: map[key]?.types || [],
+        });
+      }
+    }
+
+    const maxCount = Math.max(...cells.map((c) => c.count), 1);
+    res.json({ cells, max_count: maxCount, period_days: 7 });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -1,45 +1,52 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { io, type Socket } from "socket.io-client";
 import type { WebSocketMessage } from "../types";
 
-const WS_URL = "ws://localhost:4001";
+function getSocketUrl(): string {
+  return import.meta.env.VITE_SOCKET_URL || "http://localhost:4000";
+}
 
 export function useWebSocket() {
-  const wsRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<WebSocketMessage[]>([]);
 
   const connect = useCallback(() => {
-    const ws = new WebSocket(WS_URL);
+    const socket = io(getSocketUrl(), {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+    });
 
-    ws.onopen = () => {
+    socket.on("connect", () => {
       setConnected(true);
-      console.log("[WS] Connected");
-    };
+      console.log("[Socket.IO] Connected", socket.id);
+    });
 
-    ws.onmessage = (event) => {
-      try {
-        const msg: WebSocketMessage = JSON.parse(event.data);
-        setMessages((prev) => [msg, ...prev].slice(0, 100));
-      } catch {}
-    };
-
-    ws.onclose = () => {
+    socket.on("disconnect", () => {
       setConnected(false);
-      console.log("[WS] Disconnected — reconnecting in 3s");
-      setTimeout(connect, 3000);
-    };
+      console.log("[Socket.IO] Disconnected");
+    });
 
-    ws.onerror = () => {
-      ws.close();
-    };
+    socket.on("feed", (payload: unknown) => {
+      try {
+        if (payload && typeof payload === "object" && "type" in payload) {
+          setMessages((prev) => [payload as WebSocketMessage, ...prev].slice(0, 100));
+        }
+      } catch {
+        /* ignore malformed */
+      }
+    });
 
-    wsRef.current = ws;
+    socketRef.current = socket;
   }, []);
 
   useEffect(() => {
     connect();
     return () => {
-      wsRef.current?.close();
+      socketRef.current?.removeAllListeners();
+      socketRef.current?.close();
+      socketRef.current = null;
     };
   }, [connect]);
 

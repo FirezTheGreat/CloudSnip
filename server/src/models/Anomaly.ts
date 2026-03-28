@@ -9,6 +9,7 @@ export interface IAnomaly extends Document {
   anomaly_score: number;
   metric_snapshot?: Record<string, any>;
   description?: string;
+  explanation?: Record<string, any>;
   resolved: boolean;
   resolved_at?: Date;
   resolved_by?: string;
@@ -28,6 +29,7 @@ const AnomalySchema = new Schema<IAnomaly>(
     anomaly_score: { type: Number, required: true },
     metric_snapshot: Schema.Types.Mixed,
     description: String,
+    explanation: Schema.Types.Mixed,
     resolved: { type: Boolean, default: false, index: true },
     resolved_at: Date,
     resolved_by: String,

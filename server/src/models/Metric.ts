@@ -25,5 +25,7 @@ const MetricSchema = new Schema<IMetric>(
 
 MetricSchema.index({ resource_type: 1, metric_name: 1, time: -1 });
 MetricSchema.index({ time: -1, resource_id: 1 });
+// TTL index: automatically expire metrics older than 30 days (time-series housekeeping)
+MetricSchema.index({ time: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60, name: "metrics_ttl_30d" });
 
 export const Metric = mongoose.model<IMetric>("Metric", MetricSchema);

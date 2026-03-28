@@ -42,15 +42,15 @@ export function SavingsTracker({ savings, actions }: Props) {
     <div className="flex flex-col gap-5">
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="p-4 rounded-lg bg-emerald-950/30 border border-emerald-900/30 text-center">
+        <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-center">
           <p className="text-2xl font-bold text-success">${totalMonthly.toFixed(2)}</p>
           <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Monthly Savings</p>
         </div>
-        <div className="p-4 rounded-lg bg-blue-950/30 border border-blue-900/30 text-center">
+        <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 text-center">
           <p className="text-2xl font-bold text-accent">${totalHourly.toFixed(4)}</p>
           <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Hourly Savings</p>
         </div>
-        <div className="p-4 rounded-lg bg-violet-950/30 border border-violet-900/30 text-center">
+        <div className="p-4 rounded-lg bg-violet-50 border border-violet-200 text-center">
           <p className="text-2xl font-bold text-info">{successCount}</p>
           <p className="text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">Actions Taken</p>
         </div>
@@ -60,19 +60,23 @@ export function SavingsTracker({ savings, actions }: Props) {
       {chartData.length > 0 ? (
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-            <XAxis dataKey="name" stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
-            <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#1a2332",
-                border: "1px solid #1e293b",
+                backgroundColor: "#ffffff",
+                border: "1px solid #e2e8f0",
                 borderRadius: "10px",
-                color: "#e2e8f0",
+                color: "#334155",
                 fontSize: 12,
                 boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
               }}
-              formatter={(value: number) => [`$${value.toFixed(2)}`, "Monthly Savings"]}
+              formatter={(value) =>
+                typeof value === "number"
+                  ? [`$${value.toFixed(2)}`, "Monthly Savings"]
+                  : ["", "Monthly Savings"]
+              }
             />
             <Bar dataKey="savings" radius={[6, 6, 0, 0]}>
               {chartData.map((_, i) => (
@@ -90,13 +94,13 @@ export function SavingsTracker({ savings, actions }: Props) {
       {/* Recent actions */}
       {recentActions.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+          <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
             Recent Optimizations
           </h4>
           <div className="flex flex-col divide-y divide-border">
             {recentActions.map((a) => (
               <div key={a.id} className="flex items-center gap-3 py-2 text-xs">
-                <span className="font-semibold text-slate-300 w-20 shrink-0">
+                <span className="font-semibold text-slate-700 w-20 shrink-0">
                   {ACTION_LABELS[a.action_type] || a.action_type}
                 </span>
                 <span className="font-mono text-slate-500 truncate flex-1">
